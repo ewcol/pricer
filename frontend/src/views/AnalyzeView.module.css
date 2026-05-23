@@ -100,6 +100,12 @@
   animation: fadeInUp var(--duration-slow) var(--ease-out) both;
 }
 
+.walletNote {
+  font-size: var(--text-label);
+  color: var(--color-ink-muted);
+  line-height: 1.5;
+}
+
 .sectionLabel {
   font-size: var(--text-label);
   font-weight: 500;

@@ -23,7 +23,7 @@ export default function ProgressTracker({ steps }: Props) {
                   <path d="M2 5l2.5 2.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               )}
-              {step.status === 'running' && <span className={styles.pulse} />}
+              {step.status === 'running' && <span className={styles.pulse} aria-hidden="true" />}
             </div>
             {i < steps.length - 1 && <div className={styles.line} />}
           </div>

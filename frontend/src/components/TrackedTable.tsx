@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import PriceSparkline, { type HistoryEntry } from './PriceSparkline';
+import { driftLabel, formatTrackedDate, thumbnailAlt } from './TrackedTable.helpers.js';
 import styles from './TrackedTable.module.css';
 
 export interface TrackedItem {
@@ -19,23 +20,10 @@ interface Props {
   historyMap: Record<string, HistoryEntry[]>;
 }
 
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return iso;
-  }
-}
-
 function driftClass(drift: number): string {
   if (drift >= 5) return styles.driftUp;
   if (drift <= -10) return styles.driftDown;
   return styles.driftNeutral;
-}
-
-function driftLabel(drift: number): string {
-  if (drift === 0) return '—';
-  return drift > 0 ? `+${drift.toFixed(1)}%` : `${drift.toFixed(1)}%`;
 }
 
 export default function TrackedTable({ items, selectedId, onSelect, historyMap }: Props) {
@@ -47,7 +35,11 @@ export default function TrackedTable({ items, selectedId, onSelect, historyMap }
         <table className={styles.table}>
           <thead>
             <tr className={styles.thead}>
-              <th>Item ID</th><th>Title</th><th>Listed</th><th>Image URL</th><th>Market</th><th>Drift</th><th>Listed At</th>
+              <th>Item</th>
+              <th>Listed Price</th>
+              <th>Market</th>
+              <th>Drift</th>
+              <th>Listed At</th>
             </tr>
           </thead>
         </table>
@@ -64,10 +56,8 @@ export default function TrackedTable({ items, selectedId, onSelect, historyMap }
       <table className={styles.table}>
         <thead>
           <tr className={styles.thead}>
-            <th>Item ID</th>
-            <th>Title</th>
-            <th>Listed</th>
-            <th>Image URL</th>
+            <th>Item</th>
+            <th>Listed Price</th>
             <th>Market</th>
             <th>Drift</th>
             <th>Listed At</th>
@@ -87,32 +77,47 @@ export default function TrackedTable({ items, selectedId, onSelect, historyMap }
                 onMouseLeave={() => setHoveredId(null)}
                 aria-selected={selectedId === item.item_id}
               >
-                <td className={styles.mono}>{item.item_id}</td>
                 <td>
-                  <div className={styles.titleCell}>
-                    <div className={styles.title}>{item.title}</div>
-                    {showHistory ? (
-                      <PriceSparkline data={historyMap[item.item_id] ?? []} />
-                    ) : null}
+                  <div className={styles.itemCell}>
+                    {item.image_url ? (
+                      <a
+                        className={styles.thumbLink}
+                        href={item.image_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Open image for ${item.title}`}
+                      >
+                        <img
+                          className={styles.thumb}
+                          src={item.image_url}
+                          alt={thumbnailAlt(item.title)}
+                          loading="lazy"
+                        />
+                      </a>
+                    ) : (
+                      <div className={styles.thumbFallback} aria-hidden="true">
+                        No image
+                      </div>
+                    )}
+                    <div className={styles.itemCopy}>
+                      <div className={styles.title}>{item.title}</div>
+                      <div className={styles.subrow}>
+                        <div className={styles.itemId}>{item.item_id}</div>
+                        {showHistory ? (
+                          <PriceSparkline data={historyMap[item.item_id] ?? []} />
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td className={styles.mono}>${item.recommended_price.toFixed(2)}</td>
-                <td>
-                  {item.image_url ? (
-                    <a className={styles.url} href={item.image_url} target="_blank" rel="noreferrer">
-                      {item.image_url}
-                    </a>
-                  ) : (
-                    <span className={styles.emptyUrl}>—</span>
-                  )}
-                </td>
                 <td className={styles.mono}>
                   {item.current_market_price > 0 ? `$${item.current_market_price.toFixed(2)}` : '—'}
                 </td>
                 <td className={`${styles.mono} ${driftClass(item.price_drift_pct)}`}>
                   {driftLabel(item.price_drift_pct)}
                 </td>
-                <td className={styles.mono}>{formatDate(item.listed_at)}</td>
+                <td className={styles.mono}>{formatTrackedDate(item.listed_at)}</td>
               </tr>
             );
           })}

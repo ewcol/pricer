@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import TabBar from './components/TabBar';
 import type { Tab } from './components/TabBar';
+import WalletStatus from './components/WalletStatus';
 import AnalyzeView from './views/AnalyzeView';
 import TrackedView from './views/TrackedView';
 import styles from './App.module.css';
@@ -14,6 +15,9 @@ export default function App() {
         <div className={styles.wordmark}>
           <span className={styles.wordmarkName}>Pricer</span>
           <span className={styles.wordmarkBadge}>AI</span>
+        </div>
+        <div className={styles.headerActions}>
+          <WalletStatus />
         </div>
       </header>
 

@@ -5,6 +5,8 @@ import SkeletonPanel from '../components/SkeletonPanel';
 import ConfidenceBadge from '../components/ConfidenceBadge';
 import ProgressTracker from '../components/ProgressTracker';
 import type { StepState } from '../components/ProgressTracker';
+import { useWallet } from '../wallet/WalletContext';
+import { createAnalyzeStreamParser, type AnalyzeStreamEvent } from './AnalyzeView.stream.js';
 import styles from './AnalyzeView.module.css';
 
 interface ListingResult {
@@ -45,6 +47,7 @@ const INITIAL_STEPS: StepState[] = [
 ];
 
 export default function AnalyzeView() {
+  const { configured, signedIn, address, useMock, fetchWithPayment } = useWallet();
   const [preview, setPreview] = useState<string | null>(null);
   const [base64, setBase64] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -71,13 +74,19 @@ export default function AnalyzeView() {
 
   const analyze = async () => {
     if (!base64) return;
+    if (configured && !signedIn) {
+      setError('Sign in with a wallet to pay for analysis.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResult(null);
     setSteps(INITIAL_STEPS);
 
     try {
-      const resp = await fetch('/analyze-stream', {
+      const analyzeFetch = useMock ? fetch : fetchWithPayment;
+      const resp = await analyzeFetch('/analyze-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image_base64: base64 }),
@@ -91,39 +100,29 @@ export default function AnalyzeView() {
         return;
       }
 
+      if (!resp.body) {
+        setError('Streaming response was empty.');
+        return;
+      }
+
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();
-      let buf = '';
+      const eventQueue: AnalyzeStreamEvent[] = [];
+      const parser = createAnalyzeStreamParser((event) => {
+        eventQueue.push(event);
+      });
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const raw = line.slice(6).trim();
-          if (raw === '[DONE]') break;
-          try {
-            const event = JSON.parse(raw);
-            if (event.step === 'result') {
-              const data: ListingResult = event.data;
-              if (data.error) { setError(data.error); return; }
-              setResult(data);
-            } else if (event.step) {
-              const detail = buildDetail(event);
-              updateStep(event.step, {
-                status: event.status,
-                label: event.label,
-                ...(detail ? { detail } : {}),
-              });
-            }
-          } catch { /* malformed line */ }
-        }
+        parser.push(decoder.decode(value, { stream: true }));
+        await drainAnalyzeEvents(eventQueue, updateStep, setResult, setError);
       }
+      parser.push(decoder.decode());
+      parser.flush();
+      await drainAnalyzeEvents(eventQueue, updateStep, setResult, setError);
     } catch {
-      setError('Network error. Is the server running?');
+      setError(configured ? 'Payment failed. Try signing in again.' : 'Network error. Is the server running?');
     } finally {
       setLoading(false);
     }
@@ -161,6 +160,7 @@ export default function AnalyzeView() {
     : '';
 
   const showProgress = loading || (steps.some(s => s.status !== 'idle') && !result && !error);
+  const walletReady = !configured || signedIn;
 
   return (
     <div className={styles.layout}>
@@ -171,7 +171,7 @@ export default function AnalyzeView() {
         <button
           className={styles.analyzeBtn}
           onClick={analyze}
-          disabled={!base64 || loading}
+          disabled={!base64 || loading || !walletReady}
         >
           {loading ? (
             <span className={styles.analyzing} aria-live="polite">
@@ -184,6 +184,16 @@ export default function AnalyzeView() {
             </span>
           ) : 'Analyze Item'}
         </button>
+
+        <p className={styles.walletNote}>
+          {useMock
+            ? 'Local test wallet mode is on. Analysis runs without auth or payment.'
+            : configured
+            ? signedIn
+              ? `Wallet connected ${address ? `(${address.slice(0, 6)}…${address.slice(-4)})` : ''}. Paid analysis will retry automatically.`
+              : 'Sign in with a wallet to unlock paid analysis.'
+            : 'Wallet sign-in is not configured here, so analysis runs without x402 payment.'}
+        </p>
 
         {result && (
           <div className={styles.trackSection}>
@@ -356,7 +366,7 @@ export default function AnalyzeView() {
   );
 }
 
-function buildDetail(event: { step: string; status: string; data?: Record<string, unknown> }): string {
+function buildDetail(event: AnalyzeStreamEvent): string {
   if (!event.data || event.status !== 'done') return '';
   const d = event.data;
   if (event.step === 'vision') return `${d.brand ?? ''} ${d.item_name ?? ''}`.trim();
@@ -370,4 +380,43 @@ function buildDetail(event: { step: string; status: string; data?: Record<string
     return rec;
   }
   return '';
+}
+
+function isStepStatus(status: unknown): status is StepState['status'] {
+  return status === 'idle' || status === 'running' || status === 'done' || status === 'error';
+}
+
+async function drainAnalyzeEvents(
+  eventQueue: AnalyzeStreamEvent[],
+  updateStep: (id: string, patch: Partial<StepState>) => void,
+  setResult: (result: ListingResult) => void,
+  setError: (error: string) => void,
+) {
+  while (eventQueue.length > 0) {
+    const event = eventQueue.shift()!;
+
+    if (event.step === 'result') {
+      const data = event.data as unknown as ListingResult;
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setResult(data);
+      }
+    } else if (event.step && isStepStatus(event.status)) {
+      const detail = buildDetail(event);
+      updateStep(event.step, {
+        status: event.status,
+        ...(event.label ? { label: event.label } : {}),
+        ...(detail ? { detail } : {}),
+      });
+    }
+
+    await nextPaint();
+  }
+}
+
+function nextPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
 }
