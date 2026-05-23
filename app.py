@@ -25,7 +25,7 @@ _current_listing: dict = {}
 def analyze_image(image_path):
     global _current_listing
     if image_path is None:
-        return "Upload an image first.", "", "", "", "", ""
+        return "Upload an image first.", "", "", "", "", "", ""
 
     with Image.open(image_path) as img:
         buf = io.BytesIO()
@@ -36,13 +36,23 @@ def analyze_image(image_path):
     _current_listing = listing
 
     if "error" in listing:
-        return listing["error"], "", "", "", "", ""
+        return listing["error"], "", "", "", "", "", ""
 
     price_range = f"${listing.get('low', '?')} – ${listing.get('high', '?')}"
     recommended = f"${listing.get('recommended_price', '?')}"
 
+    confidence = listing.get("confidence")
+    signals_agree = listing.get("signals_agree")
+    reasoning = listing.get("identification_reasoning", "")
+    if confidence is not None:
+        agree_str = "✓ signals agree" if signals_agree else "⚠ signals disagree"
+        confidence_str = f"{int(confidence * 100)}% confidence — {agree_str}\n{reasoning}"
+    else:
+        confidence_str = reasoning
+
     return (
         f"{listing.get('item_name', '')} — {listing.get('brand', '')} ({listing.get('condition_guess', '')})",
+        confidence_str,
         price_range,
         recommended,
         listing.get("title", ""),
@@ -199,6 +209,7 @@ with gr.Blocks(title="eBay Seller Agent") as demo:
             analyze_btn = gr.Button("Analyze Item", variant="primary")
 
         item_summary = gr.Textbox(label="Identified Item", interactive=False)
+        confidence_out = gr.Textbox(label="Identification Confidence", interactive=False)
         price_range_out = gr.Textbox(label="Price Range Found", interactive=False)
         recommended_out = gr.Textbox(label="Recommended Price", interactive=False, elem_id="recommended")
 
@@ -214,7 +225,7 @@ with gr.Blocks(title="eBay Seller Agent") as demo:
         analyze_btn.click(
             fn=analyze_image,
             inputs=[image_input],
-            outputs=[item_summary, price_range_out, recommended_out, listing_title, listing_desc, category_out],
+            outputs=[item_summary, confidence_out, price_range_out, recommended_out, listing_title, listing_desc, category_out],
         )
         track_btn.click(
             fn=track_item,

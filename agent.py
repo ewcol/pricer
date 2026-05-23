@@ -1,4 +1,4 @@
-"""Multi-agent eBay listing pipeline: vision → price research (parallel) → listing."""
+"""Multi-agent eBay listing pipeline: vision → reverse image search (parallel) → reconcile → price research → listing."""
 import os
 import json
 import base64
@@ -27,12 +27,102 @@ _nimble = Nimble(api_key=os.getenv("NIMBLE_API_KEY"))
 # ---------------------------------------------------------------------------
 
 async def identify_item(image_base64: str) -> dict:
+    """Gemini vision identification — returns item info with a confidence score."""
     prompt = """
     Look at this item and return a JSON object with these exact keys:
     - item_name: string
     - brand: string (or "Unknown" if not visible)
     - condition_guess: string (e.g. "Good", "Fair", "Excellent")
     - search_keywords: list of 3-5 strings for eBay sold-listing searches
+    - confidence: float between 0 and 1 (how certain you are about the identification)
+    - reasoning: string (one sentence on why you are or aren't confident)
+    Return only the JSON object, no prose.
+    """
+    response = _genai_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[
+            types.Part.from_bytes(data=base64.b64decode(image_base64), mime_type="image/jpeg"),
+            prompt,
+        ],
+    )
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text.strip())
+
+
+async def _upload_to_imgbb(image_base64: str) -> str:
+    """Upload image to imgbb and return the public URL."""
+    import httpx
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://api.imgbb.com/1/upload",
+            data={"key": os.getenv("IMGBB_API_KEY"), "image": image_base64},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()["data"]["url"]
+
+
+async def reverse_image_search(image_base64: str) -> dict:
+    """Upload image to imgbb, then run SerpApi Google Lens for visual matches."""
+    import httpx
+    image_url = await _upload_to_imgbb(image_base64)
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://serpapi.com/search",
+            params={
+                "engine": "google_lens",
+                "url": image_url,
+                "api_key": os.getenv("SERPAPI_KEY"),
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    hits: list[dict] = []
+    for match in data.get("visual_matches", [])[:8]:
+        hits.append({
+            "title": match.get("title", ""),
+            "source": match.get("source", ""),
+            "url": match.get("link", ""),
+            "price": match.get("price", {}).get("value") if match.get("price") else None,
+        })
+
+    return {
+        "image_url": image_url,
+        "hits": hits,
+    }
+
+
+async def reconcile_identification(
+    image_base64: str, gemini_result: dict, reverse_search_result: dict
+) -> dict:
+    """Compare Gemini's direct identification against image-search grounding results."""
+    prompt = f"""
+    You are identifying an item for an eBay listing. You have two independent signals:
+
+    1. GEMINI DIRECT IDENTIFICATION (may be wrong):
+    {json.dumps(gemini_result, indent=2)}
+
+    2. GOOGLE LENS VISUAL MATCHES (searched from the raw image, no text bias):
+    {json.dumps(reverse_search_result.get("hits", []), indent=2)}
+
+    Cross-reference these two signals. If they agree, confidence should be high.
+    If they disagree, trust the web search results more than Gemini's direct guess.
+
+    Return a JSON object with these exact keys:
+    - item_name: string (best identification)
+    - brand: string (or "Unknown")
+    - condition_guess: string
+    - search_keywords: list of 3-5 strings optimized for eBay sold-listing searches
+    - confidence: float 0-1
+    - signals_agree: boolean
+    - reasoning: string (one sentence explaining the reconciliation)
     Return only the JSON object, no prose.
     """
     response = _genai_client.models.generate_content(
@@ -56,12 +146,10 @@ async def research_prices(search_keywords: list[str]) -> dict:
     resp = await asyncio.to_thread(
         _nimble.agent.run,
         agent="ebay_search_2026_02_23_pbgj8oft",
-        inputs={"keyword": query},
+        params={"query": query},
     )
 
     listings = resp.data.parsing if resp.data and resp.data.parsing else []
-    if hasattr(listings, "model_dump"):
-        listings = listings.model_dump()
     if not isinstance(listings, list):
         listings = []
 
@@ -69,16 +157,16 @@ async def research_prices(search_keywords: list[str]) -> dict:
     source_urls: list[str] = []
 
     for item in listings:
-        url = item.get("url") or item.get("link", "")
+        url = getattr(item, "url", None) or ""
         if url:
             source_urls.append(url)
-        raw_price = item.get("price") or item.get("buy_it_now_price") or item.get("current_price")
+        raw_price = getattr(item, "price", None)
         if raw_price is not None:
             try:
-                price = float(str(raw_price).replace("$", "").replace(",", "").strip())
+                price = float(raw_price)
                 if price > 0:
                     prices.append(price)
-            except ValueError:
+            except (ValueError, TypeError):
                 pass
 
     if not prices:
@@ -221,10 +309,16 @@ def _resize_image_b64(image_base64: str, max_px: int = 1024) -> str:
 async def run_agent(image_base64: str) -> dict:
     image_base64 = _resize_image_b64(image_base64)
 
-    # Step 1: vision
-    item_info = await identify_item(image_base64)
+    # Step 1: identify via Gemini vision + reverse image search in parallel
+    gemini_result, reverse_result = await asyncio.gather(
+        identify_item(image_base64),
+        reverse_image_search(image_base64),
+    )
 
-    # Step 2: parallel price research from eBay and web
+    # Step 2: reconcile — cross-reference both signals for a high-confidence ID
+    item_info = await reconcile_identification(image_base64, gemini_result, reverse_result)
+
+    # Step 3: parallel price research using reconciled keywords
     keywords = item_info.get("search_keywords", [])
     web_keywords = keywords + ["price used"]
     ebay_result, web_result = await asyncio.gather(
@@ -246,12 +340,15 @@ async def run_agent(image_base64: str) -> dict:
     else:
         price_data = ebay_result  # fallback with note
 
-    # Step 3: generate listing
+    # Step 4: generate listing
     listing = await generate_listing(item_info, price_data)
 
     listing["item_name"] = item_info.get("item_name", "")
     listing["brand"] = item_info.get("brand", "")
     listing["condition_guess"] = item_info.get("condition_guess", "")
+    listing["confidence"] = item_info.get("confidence")
+    listing["signals_agree"] = item_info.get("signals_agree")
+    listing["identification_reasoning"] = item_info.get("reasoning", "")
     listing["low"] = price_data.get("low")
     listing["high"] = price_data.get("high")
 
