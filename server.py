@@ -1,11 +1,13 @@
 """FastAPI entry point — x402-gated /analyze-item + Gradio UI mounted at /."""
 import os
+import logging
 import uvicorn
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
+logging.basicConfig(level=logging.DEBUG)
 
 import gradio as gr
 from x402 import x402ResourceServer

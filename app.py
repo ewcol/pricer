@@ -1,4 +1,4 @@
-"""Gradio UI — Tab 1: analyze & list, Tab 2: tracked items + autonomy monitor."""
+"""Gradio UI — Tab 1: analyze & list, Tab 2: tracked items + per-item monitor."""
 import os
 import asyncio
 import base64
@@ -32,7 +32,7 @@ def analyze_image(image_path):
         img.convert("RGB").save(buf, format="JPEG")
         image_b64 = base64.b64encode(buf.getvalue()).decode()
 
-    listing = asyncio.run(run_agent(image_b64))
+    listing = asyncio.run(run_agent(image_b64, include_image_url=True))
     _current_listing = listing
 
     if "error" in listing:
@@ -44,6 +44,7 @@ def analyze_image(image_path):
     confidence = listing.get("confidence")
     signals_agree = listing.get("signals_agree")
     reasoning = listing.get("identification_reasoning", "")
+    image_url = listing.get("image_url", "")
     if confidence is not None:
         agree_str = "✓ signals agree" if signals_agree else "⚠ signals disagree"
         confidence_str = f"{int(confidence * 100)}% confidence — {agree_str}\n{reasoning}"
@@ -55,6 +56,7 @@ def analyze_image(image_path):
         confidence_str,
         price_range,
         recommended,
+        image_url,
         listing.get("title", ""),
         listing.get("description", ""),
         listing.get("category_suggestion", ""),
@@ -73,15 +75,17 @@ def track_item(item_id: str):
         recommended_price=float(_current_listing.get("recommended_price", 0)),
         notes=_current_listing.get("price_rationale", ""),
     )
-    return f"Tracked item {item_id}."
+    scheduled = _schedule_item_check(item_id.strip())
+    return f"Tracked item {item_id}. {scheduled}"
 
 
 # ---------------------------------------------------------------------------
 # Tab 2 — autonomy monitor
 # ---------------------------------------------------------------------------
 
-_stop_event = threading.Event()
-_monitor_thread: threading.Thread | None = None
+_pending_checks: dict[str, threading.Timer] = {}
+_pending_checks_lock = threading.Lock()
+_selected_item_id = ""
 
 
 def _extract_keywords(title: str) -> list[str]:
@@ -109,26 +113,86 @@ async def _check_prices_once():
             pass
 
 
-async def _monitor_loop():
-    while not _stop_event.is_set():
-        await _check_prices_once()
-        await asyncio.sleep(30)
+async def _check_single_item_once(item_id: str):
+    items = {item["item_id"]: item for item in get_all_items()}
+    item = items.get(item_id)
+    if item is None:
+        return
+
+    keywords = _extract_keywords(item["title"])
+    if not keywords:
+        return
+
+    try:
+        market = await research_prices(keywords)
+        current = market.get("recommended")
+        if current:
+            listed = item["recommended_price"]
+            drift = (current - listed) / listed * 100
+            update_item_market_price(item_id, current, drift)
+            if abs(drift) >= 10:
+                log_price_history(item_id, listed, current, drift, "flagged")
+    except Exception:
+        pass
 
 
-def start_monitor():
-    global _monitor_thread
-    _stop_event.clear()
-    if _monitor_thread is None or not _monitor_thread.is_alive():
-        _monitor_thread = threading.Thread(
-            target=lambda: asyncio.run(_monitor_loop()), daemon=True
-        )
-        _monitor_thread.start()
-    return "Monitoring every 30s..."
+def _schedule_item_check(item_id: str) -> str:
+    item_id = item_id.strip()
+    if not item_id:
+        return "Select an item first."
+
+    def _run_check():
+        try:
+            asyncio.run(_check_single_item_once(item_id))
+        finally:
+            with _pending_checks_lock:
+                _pending_checks.pop(item_id, None)
+
+    with _pending_checks_lock:
+        existing = _pending_checks.get(item_id)
+        if existing is not None:
+            existing.cancel()
+        timer = threading.Timer(30.0, _run_check)
+        timer.daemon = True
+        _pending_checks[item_id] = timer
+        timer.start()
+
+    return f"Scheduled one check for {item_id} in 30 seconds."
 
 
-def stop_monitor():
-    _stop_event.set()
-    return "Stopped."
+def _cancel_item_check(item_id: str) -> str:
+    item_id = item_id.strip()
+    if not item_id:
+        return "Select an item first."
+
+    with _pending_checks_lock:
+        timer = _pending_checks.pop(item_id, None)
+        if timer is None:
+            return f"No pending check for {item_id}."
+        timer.cancel()
+
+    return f"Canceled pending check for {item_id}."
+
+
+def select_tracked_item(evt: gr.SelectData):
+    global _selected_item_id
+
+    if not evt.selected or not evt.row_value:
+        _selected_item_id = ""
+        return "", "No item selected."
+
+    item_id = str(evt.row_value[0])
+    title = str(evt.row_value[1]) if len(evt.row_value) > 1 else ""
+    _selected_item_id = item_id
+    return item_id, f"Selected {item_id}: {title}"
+
+
+def schedule_selected_monitor(item_id: str):
+    return _schedule_item_check(item_id)
+
+
+def cancel_selected_monitor(item_id: str):
+    return _cancel_item_check(item_id)
 
 
 def load_items():
@@ -212,6 +276,7 @@ with gr.Blocks(title="eBay Seller Agent") as demo:
         confidence_out = gr.Textbox(label="Identification Confidence", interactive=False)
         price_range_out = gr.Textbox(label="Price Range Found", interactive=False)
         recommended_out = gr.Textbox(label="Recommended Price", interactive=False, elem_id="recommended")
+        image_url_out = gr.Textbox(label="Published Image URL", interactive=False)
 
         listing_title = gr.Textbox(label="Suggested eBay Title", interactive=True)
         listing_desc = gr.Textbox(label="Description", lines=4, interactive=True)
@@ -225,7 +290,16 @@ with gr.Blocks(title="eBay Seller Agent") as demo:
         analyze_btn.click(
             fn=analyze_image,
             inputs=[image_input],
-            outputs=[item_summary, confidence_out, price_range_out, recommended_out, listing_title, listing_desc, category_out],
+            outputs=[
+                item_summary,
+                confidence_out,
+                price_range_out,
+                recommended_out,
+                image_url_out,
+                listing_title,
+                listing_desc,
+                category_out,
+            ],
         )
         track_btn.click(
             fn=track_item,
@@ -236,9 +310,7 @@ with gr.Blocks(title="eBay Seller Agent") as demo:
     with gr.Tab("Tracked Items"):
         with gr.Row():
             refresh_btn = gr.Button("Refresh")
-            monitor_btn = gr.Button("Start Auto-Monitor", variant="secondary")
-            stop_btn = gr.Button("Stop")
-            monitor_status = gr.Textbox(label="Monitor Status", interactive=False, value="Stopped", scale=2)
+            monitor_status = gr.Textbox(label="Monitor Status", interactive=False, value="Select a row to monitor", scale=2)
 
         items_table = gr.Dataframe(
             headers=["Item ID", "Title", "Listed Price", "Market Price", "Drift", "Listed At"],
@@ -246,9 +318,27 @@ with gr.Blocks(title="eBay Seller Agent") as demo:
             interactive=False,
         )
 
+        selected_item_id = gr.Textbox(label="Selected Item ID", interactive=False)
+        with gr.Row():
+            schedule_btn = gr.Button("Schedule 30s Check", variant="secondary")
+            cancel_btn = gr.Button("Cancel Pending Check")
+
         refresh_btn.click(fn=load_items, inputs=[], outputs=[items_table])
-        monitor_btn.click(fn=start_monitor, inputs=[], outputs=[monitor_status])
-        stop_btn.click(fn=stop_monitor, inputs=[], outputs=[monitor_status])
+        items_table.select(
+            fn=select_tracked_item,
+            inputs=[],
+            outputs=[selected_item_id, monitor_status],
+        )
+        schedule_btn.click(
+            fn=schedule_selected_monitor,
+            inputs=[selected_item_id],
+            outputs=[monitor_status],
+        )
+        cancel_btn.click(
+            fn=cancel_selected_monitor,
+            inputs=[selected_item_id],
+            outputs=[monitor_status],
+        )
 
         demo.load(fn=load_items, inputs=[], outputs=[items_table])
 

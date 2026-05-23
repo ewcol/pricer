@@ -5,6 +5,7 @@ import base64
 import statistics
 import asyncio
 import io
+import logging
 from nimble_python import Nimble
 from PIL import Image
 from google import genai
@@ -20,6 +21,7 @@ load_dotenv()
 
 _genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 _nimble = Nimble(api_key=os.getenv("NIMBLE_API_KEY"))
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +65,9 @@ async def _upload_to_imgbb(image_base64: str) -> str:
             timeout=30,
         )
         resp.raise_for_status()
-        return resp.json()["data"]["url"]
+        image_url = resp.json()["data"]["url"]
+        logger.debug("imgbb image_url=%s", image_url)
+        return image_url
 
 
 async def reverse_image_search(image_base64: str) -> dict:
@@ -100,20 +104,22 @@ async def reverse_image_search(image_base64: str) -> dict:
 
 
 async def reconcile_identification(
-    image_base64: str, gemini_result: dict, reverse_search_result: dict
+    gemini_result: dict, reverse_search_result: dict
 ) -> dict:
-    """Compare Gemini's direct identification against image-search grounding results."""
+    """Resolve identification by prioritizing reverse-image evidence over Gemini's guess."""
     prompt = f"""
     You are identifying an item for an eBay listing. You have two independent signals:
 
-    1. GEMINI DIRECT IDENTIFICATION (may be wrong):
-    {json.dumps(gemini_result, indent=2)}
-
-    2. GOOGLE LENS VISUAL MATCHES (searched from the raw image, no text bias):
+    1. GOOGLE LENS VISUAL MATCHES (primary source of truth for brand/model):
     {json.dumps(reverse_search_result.get("hits", []), indent=2)}
 
-    Cross-reference these two signals. If they agree, confidence should be high.
-    If they disagree, trust the web search results more than Gemini's direct guess.
+    2. GEMINI DIRECT IDENTIFICATION (secondary; may be wrong):
+    {json.dumps(gemini_result, indent=2)}
+
+    Use the Google Lens matches as the primary evidence for brand and model.
+    If the Lens matches consistently point to a different brand than Gemini, prefer the Lens brand.
+    Only fall back to Gemini when the Lens results are sparse, inconsistent, or clearly unrelated.
+    If the signals disagree, set signals_agree to false and lower confidence.
 
     Return a JSON object with these exact keys:
     - item_name: string (best identification)
@@ -127,10 +133,7 @@ async def reconcile_identification(
     """
     response = _genai_client.models.generate_content(
         model="gemini-2.5-flash",
-        contents=[
-            types.Part.from_bytes(data=base64.b64decode(image_base64), mime_type="image/jpeg"),
-            prompt,
-        ],
+        contents=[prompt],
     )
     text = response.text.strip()
     if text.startswith("```"):
@@ -306,7 +309,7 @@ def _resize_image_b64(image_base64: str, max_px: int = 1024) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-async def run_agent(image_base64: str) -> dict:
+async def run_agent(image_base64: str, include_image_url: bool = False) -> dict:
     image_base64 = _resize_image_b64(image_base64)
 
     # Step 1: identify via Gemini vision + reverse image search in parallel
@@ -316,7 +319,7 @@ async def run_agent(image_base64: str) -> dict:
     )
 
     # Step 2: reconcile — cross-reference both signals for a high-confidence ID
-    item_info = await reconcile_identification(image_base64, gemini_result, reverse_result)
+    item_info = await reconcile_identification(gemini_result, reverse_result)
 
     # Step 3: parallel price research using reconciled keywords
     keywords = item_info.get("search_keywords", [])
@@ -349,6 +352,8 @@ async def run_agent(image_base64: str) -> dict:
     listing["confidence"] = item_info.get("confidence")
     listing["signals_agree"] = item_info.get("signals_agree")
     listing["identification_reasoning"] = item_info.get("reasoning", "")
+    if include_image_url:
+        listing["image_url"] = reverse_result.get("image_url", "")
     listing["low"] = price_data.get("low")
     listing["high"] = price_data.get("high")
 
