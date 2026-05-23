@@ -25,7 +25,7 @@ async def _check_item(item_id: str) -> None:
     if not keywords:
         return
     try:
-        market = await research_prices(keywords)
+        market = await research_prices(keywords, {"title": item["title"], "search_keywords": keywords})
         current = market.get("recommended")
         if current:
             listed = item["recommended_price"]

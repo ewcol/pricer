@@ -16,6 +16,11 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.tools import AgentTool
 from google.genai import types as genai_types
 from dotenv import load_dotenv
+from marketplace_sources import (
+    MarketplaceSource,
+    build_search_query,
+    select_marketplace_sources,
+)
 
 load_dotenv()
 
@@ -143,14 +148,21 @@ async def reconcile_identification(
     return json.loads(text.strip())
 
 
-async def research_prices(search_keywords: list[str]) -> dict:
-    query = " ".join(search_keywords)
-
-    resp = await asyncio.to_thread(
-        _nimble.agent.run,
-        agent="ebay_search_2026_02_23_pbgj8oft",
-        params={"query": query},
-    )
+async def _research_source_prices(source: MarketplaceSource, query: str) -> dict:
+    try:
+        resp = await asyncio.to_thread(
+            _nimble.agent.run,
+            agent=source.agent_name,
+            params={source.param_name: query},
+        )
+    except Exception as exc:
+        return {
+            "source": source.key,
+            "label": source.label,
+            "prices_found": [],
+            "source_urls": [],
+            "note": f"{source.label} search failed: {exc}",
+        }
 
     listings = resp.data.parsing if resp.data and resp.data.parsing else []
     if not isinstance(listings, list):
@@ -172,25 +184,74 @@ async def research_prices(search_keywords: list[str]) -> dict:
             except (ValueError, TypeError):
                 pass
 
+    note = ""
     if not prices:
+        note = f"No {source.label} listings with prices found."
+
+    return {
+        "source": source.key,
+        "label": source.label,
+        "prices_found": prices,
+        "source_urls": source_urls[:5],
+        "note": note,
+    }
+
+
+async def research_prices(search_keywords: list[str], item_info: dict | None = None) -> dict:
+    query = build_search_query(search_keywords)
+    sources = select_marketplace_sources(item_info or search_keywords)
+
+    source_results = await asyncio.gather(
+        *[_research_source_prices(source, query) for source in sources]
+    )
+
+    raw_prices: list[float] = []
+    weighted_prices: list[float] = []
+    source_urls: list[str] = []
+    source_breakdown: list[dict] = []
+
+    for source, result in zip(sources, source_results):
+        prices = result.get("prices_found", [])
+        if prices:
+            raw_prices.extend(prices)
+            weighted_prices.extend(prices * max(1, source.priority))
+        source_urls.extend(result.get("source_urls", []))
+        source_breakdown.append(
+            {
+                "source": source.key,
+                "label": source.label,
+                "count": len(prices),
+                "priority": source.priority,
+                "note": result.get("note", ""),
+            }
+        )
+
+    if not raw_prices:
         return {
             "prices_found": [],
+            "weighted_prices": [],
             "low": None,
             "high": None,
             "recommended": None,
-            "source_urls": source_urls[:5],
-            "note": "No eBay listings with prices found. Recommend manual eBay check.",
+            "source_urls": source_urls[:10],
+            "sources_used": [source.key for source in sources],
+            "source_breakdown": source_breakdown,
+            "note": "No marketplace listings with prices found. Recommend manual check.",
         }
 
-    median = statistics.median(prices)
+    prices_for_median = weighted_prices or raw_prices
+    median = statistics.median(prices_for_median)
     recommended = round(median - 0.01) + 0.99
 
     return {
-        "prices_found": prices,
-        "low": min(prices),
-        "high": max(prices),
+        "prices_found": raw_prices,
+        "weighted_prices": weighted_prices,
+        "low": min(raw_prices),
+        "high": max(raw_prices),
         "recommended": recommended,
-        "source_urls": source_urls[:5],
+        "source_urls": source_urls[:10],
+        "sources_used": [source.key for source in sources],
+        "source_breakdown": source_breakdown,
     }
 
 
@@ -250,8 +311,8 @@ price_agent_web = LlmAgent(
     model="gemini-2.5-flash",
     name="price_agent_web",
     instruction="""
-    Call research_prices with the provided search keywords appended with 'price used' to find
-    general web pricing data. Return only the JSON dict from research_prices — no prose.
+    Call research_prices with the provided search keywords to find secondary marketplace comps.
+    Return only the JSON dict from research_prices — no prose.
     """,
     tools=[research_prices],
 )
@@ -337,30 +398,14 @@ async def run_agent_stream(image_base64: str):
         "signals_agree": item_info.get("signals_agree"),
     }}
 
-    yield {"step": "prices", "status": "running", "label": "Researching eBay sold prices"}
+    yield {"step": "prices", "status": "running", "label": "Researching marketplace comps"}
     keywords = item_info.get("search_keywords", [])
-    web_keywords = keywords + ["price used"]
-    ebay_result, web_result = await asyncio.gather(
-        research_prices(keywords),
-        research_prices(web_keywords),
-    )
-    all_prices = ebay_result.get("prices_found", []) + web_result.get("prices_found", [])
-    if all_prices:
-        median = statistics.median(all_prices)
-        recommended = round(median - 0.01) + 0.99
-        price_data = {
-            "prices_found": all_prices,
-            "low": min(all_prices),
-            "high": max(all_prices),
-            "recommended": recommended,
-            "source_urls": (ebay_result.get("source_urls", []) + web_result.get("source_urls", []))[:5],
-        }
-    else:
-        price_data = ebay_result
-    yield {"step": "prices", "status": "done", "label": f"Found {len(all_prices)} comp listings", "data": {
+    price_data = await research_prices(keywords, item_info)
+    yield {"step": "prices", "status": "done", "label": f"Found {len(price_data.get('prices_found', []))} comp listings", "data": {
         "low": price_data.get("low"),
         "high": price_data.get("high"),
         "recommended": price_data.get("recommended"),
+        "sources_used": price_data.get("sources_used", []),
     }}
 
     yield {"step": "listing", "status": "running", "label": "Generating eBay listing"}
@@ -372,6 +417,9 @@ async def run_agent_stream(image_base64: str):
     listing["signals_agree"] = item_info.get("signals_agree")
     listing["identification_reasoning"] = item_info.get("reasoning", "")
     listing["image_url"] = reverse_result.get("image_url", "")
+    listing["search_keywords"] = item_info.get("search_keywords", [])
+    listing["sources_used"] = price_data.get("sources_used", [])
+    listing["source_breakdown"] = price_data.get("source_breakdown", [])
     listing["low"] = price_data.get("low")
     listing["high"] = price_data.get("high")
     yield {"step": "listing", "status": "done", "label": "Listing generated"}
@@ -391,27 +439,9 @@ async def run_agent(image_base64: str, include_image_url: bool = False) -> dict:
     # Step 2: reconcile — cross-reference both signals for a high-confidence ID
     item_info = await reconcile_identification(gemini_result, reverse_result)
 
-    # Step 3: parallel price research using reconciled keywords
+    # Step 3: marketplace price research using reconciled keywords
     keywords = item_info.get("search_keywords", [])
-    web_keywords = keywords + ["price used"]
-    ebay_result, web_result = await asyncio.gather(
-        research_prices(keywords),
-        research_prices(web_keywords),
-    )
-
-    all_prices = ebay_result.get("prices_found", []) + web_result.get("prices_found", [])
-    if all_prices:
-        median = statistics.median(all_prices)
-        recommended = round(median - 0.01) + 0.99
-        price_data = {
-            "prices_found": all_prices,
-            "low": min(all_prices),
-            "high": max(all_prices),
-            "recommended": recommended,
-            "source_urls": (ebay_result.get("source_urls", []) + web_result.get("source_urls", []))[:5],
-        }
-    else:
-        price_data = ebay_result  # fallback with note
+    price_data = await research_prices(keywords, item_info)
 
     # Step 4: generate listing
     listing = await generate_listing(item_info, price_data)
@@ -424,6 +454,9 @@ async def run_agent(image_base64: str, include_image_url: bool = False) -> dict:
     listing["identification_reasoning"] = item_info.get("reasoning", "")
     if include_image_url:
         listing["image_url"] = reverse_result.get("image_url", "")
+    listing["search_keywords"] = item_info.get("search_keywords", [])
+    listing["sources_used"] = price_data.get("sources_used", [])
+    listing["source_breakdown"] = price_data.get("source_breakdown", [])
     listing["low"] = price_data.get("low")
     listing["high"] = price_data.get("high")
 

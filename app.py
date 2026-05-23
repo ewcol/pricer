@@ -25,7 +25,7 @@ _current_listing: dict = {}
 def analyze_image(image_path):
     global _current_listing
     if image_path is None:
-        return "Upload an image first.", "", "", "", "", "", ""
+        return "Upload an image first.", "", "", "", "", "", "", "", "", ""
 
     with Image.open(image_path) as img:
         buf = io.BytesIO()
@@ -36,7 +36,7 @@ def analyze_image(image_path):
     _current_listing = listing
 
     if "error" in listing:
-        return listing["error"], "", "", "", "", "", ""
+        return listing["error"], "", "", "", "", "", "", "", "", ""
 
     price_range = f"${listing.get('low', '?')} – ${listing.get('high', '?')}"
     recommended = f"${listing.get('recommended_price', '?')}"
@@ -45,6 +45,23 @@ def analyze_image(image_path):
     signals_agree = listing.get("signals_agree")
     reasoning = listing.get("identification_reasoning", "")
     image_url = listing.get("image_url", "")
+    search_keywords = ", ".join(listing.get("search_keywords", []))
+    sources_used = ", ".join(listing.get("sources_used", []))
+    source_breakdown = listing.get("source_breakdown", [])
+    if source_breakdown:
+        breakdown_lines = []
+        for source in source_breakdown:
+            label = source.get("label", source.get("source", ""))
+            count = source.get("count", 0)
+            priority = source.get("priority", 1)
+            note = source.get("note", "")
+            line = f"{label}: {count} hits, weight {priority}"
+            if note:
+                line += f" - {note}"
+            breakdown_lines.append(line)
+        source_breakdown_text = "\n".join(breakdown_lines)
+    else:
+        source_breakdown_text = ""
     if confidence is not None:
         agree_str = "✓ signals agree" if signals_agree else "⚠ signals disagree"
         confidence_str = f"{int(confidence * 100)}% confidence — {agree_str}\n{reasoning}"
@@ -57,6 +74,9 @@ def analyze_image(image_path):
         price_range,
         recommended,
         image_url,
+        search_keywords,
+        sources_used,
+        source_breakdown_text,
         listing.get("title", ""),
         listing.get("description", ""),
         listing.get("category_suggestion", ""),
@@ -101,7 +121,7 @@ async def _check_prices_once():
         if not keywords:
             continue
         try:
-            market = await research_prices(keywords)
+            market = await research_prices(keywords, {"title": item["title"], "search_keywords": keywords})
             current = market.get("recommended")
             if current:
                 listed = item["recommended_price"]
@@ -124,7 +144,7 @@ async def _check_single_item_once(item_id: str):
         return
 
     try:
-        market = await research_prices(keywords)
+        market = await research_prices(keywords, {"title": item["title"], "search_keywords": keywords})
         current = market.get("recommended")
         if current:
             listed = item["recommended_price"]
@@ -277,6 +297,9 @@ with gr.Blocks(title="eBay Seller Agent") as demo:
         price_range_out = gr.Textbox(label="Price Range Found", interactive=False)
         recommended_out = gr.Textbox(label="Recommended Price", interactive=False, elem_id="recommended")
         image_url_out = gr.Textbox(label="Published Image URL", interactive=False)
+        search_keywords_out = gr.Textbox(label="Search Keywords Used", interactive=False)
+        sources_used_out = gr.Textbox(label="Marketplaces Used", interactive=False)
+        source_breakdown_out = gr.Textbox(label="Marketplace Breakdown", lines=4, interactive=False)
 
         listing_title = gr.Textbox(label="Suggested eBay Title", interactive=True)
         listing_desc = gr.Textbox(label="Description", lines=4, interactive=True)
@@ -296,6 +319,9 @@ with gr.Blocks(title="eBay Seller Agent") as demo:
                 price_range_out,
                 recommended_out,
                 image_url_out,
+                search_keywords_out,
+                sources_used_out,
+                source_breakdown_out,
                 listing_title,
                 listing_desc,
                 category_out,
