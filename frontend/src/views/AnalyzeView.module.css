@@ -25,12 +25,14 @@
 .analyzeBtn {
   width: 100%;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-surface-raised);
   border: none;
   border-radius: var(--radius-sm);
   padding: 12px 20px;
+  min-height: 46px;
   font-size: var(--text-body);
   font-weight: 600;
+  line-height: 1;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-out);
   display: flex;
@@ -54,24 +56,28 @@
 
 .analyzing {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 10px;
   line-height: 1;
+  transform: translateY(-0.5px);
 }
 
 .dots {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 5px;
+  height: 1em;
 }
 
 .dot {
   display: inline-block;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: currentColor;
   animation: pulse 1.2s ease-in-out infinite;
 }
 
@@ -79,8 +85,8 @@
 .dot:nth-child(3) { animation-delay: 0.4s; }
 
 .analyzingLabel {
-  font-size: var(--text-label);
-  font-weight: 500;
+  font-size: 0.8125rem;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }

@@ -45,6 +45,7 @@ const INITIAL_STEPS: StepState[] = [
   { id: 'prices',       label: 'Researching eBay sold prices',   status: 'idle' },
   { id: 'listing',      label: 'Generating eBay listing',        status: 'idle' },
 ];
+const MIN_RUNNING_STEP_MS = 320;
 
 export default function AnalyzeView() {
   const { configured, signedIn, address, useMock, fetchWithPayment } = useWallet();
@@ -111,6 +112,7 @@ export default function AnalyzeView() {
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();
       const eventQueue: AnalyzeStreamEvent[] = [];
+      const runningStepStartedAt = new Map<string, number>();
       const parser = createAnalyzeStreamParser((event) => {
         eventQueue.push(event);
       });
@@ -119,11 +121,11 @@ export default function AnalyzeView() {
         const { done, value } = await reader.read();
         if (done) break;
         parser.push(decoder.decode(value, { stream: true }));
-        await drainAnalyzeEvents(eventQueue, updateStep, setResult, setError);
+        await drainAnalyzeEvents(eventQueue, runningStepStartedAt, updateStep, setResult, setError);
       }
       parser.push(decoder.decode());
       parser.flush();
-      await drainAnalyzeEvents(eventQueue, updateStep, setResult, setError);
+      await drainAnalyzeEvents(eventQueue, runningStepStartedAt, updateStep, setResult, setError);
     } catch {
       setError(configured ? 'Payment failed. Try signing in again.' : 'Network error. Is the server running?');
     } finally {
@@ -391,6 +393,7 @@ function isStepStatus(status: unknown): status is StepState['status'] {
 
 async function drainAnalyzeEvents(
   eventQueue: AnalyzeStreamEvent[],
+  runningStepStartedAt: Map<string, number>,
   updateStep: (id: string, patch: Partial<StepState>) => void,
   setResult: (result: ListingResult) => void,
   setError: (error: string) => void,
@@ -406,16 +409,35 @@ async function drainAnalyzeEvents(
         setResult(data);
       }
     } else if (event.step && isStepStatus(event.status)) {
+      if (event.status === 'done') {
+        const startedAt = runningStepStartedAt.get(event.step);
+        const remainingMs = startedAt == null ? 0 : MIN_RUNNING_STEP_MS - (performance.now() - startedAt);
+        if (remainingMs > 0) {
+          await delay(remainingMs);
+        }
+        runningStepStartedAt.delete(event.step);
+      }
+
       const detail = buildDetail(event);
       updateStep(event.step, {
         status: event.status,
         ...(event.label ? { label: event.label } : {}),
         ...(detail ? { detail } : {}),
       });
+
+      if (event.status === 'running') {
+        runningStepStartedAt.set(event.step, performance.now());
+      }
     }
 
     await nextPaint();
   }
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function nextPaint() {
