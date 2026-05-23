@@ -29,6 +29,8 @@ from monitor import schedule_item_check, cancel_item_check
 AGENT_WALLET = os.getenv("AGENT_WALLET_ADDRESS", "")
 USDC_BASE = os.getenv("USDC_BASE_ADDRESS", "0x833589fcd6eA067d4b6f71A3d7e95e5F49c6Ef3")
 X402_PRICE = int(os.getenv("X402_PRICE_USDC", "50000"))
+MOCK_PAYMENT_BYPASS_HEADER = "x-pricer-mock-wallet"
+LOCAL_CLIENT_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 # Base Sepolia testnet — supported by x402.org/facilitator (mainnet requires self-hosted facilitator)
 BASE_NETWORK = "eip155:84532"
@@ -55,8 +57,22 @@ _x402 = payment_middleware(routes=_routes, server=_x402_server)
 app = FastAPI(title="eBay Seller Agent API")
 
 
+def _is_paid_analyze_request(request: Request) -> bool:
+    return request.method == "POST" and request.url.path == "/analyze-stream"
+
+
+def _is_local_mock_payment_bypass(request: Request) -> bool:
+    client_host = getattr(getattr(request, "client", None), "host", "")
+    return (
+        request.headers.get(MOCK_PAYMENT_BYPASS_HEADER) == "true"
+        and client_host in LOCAL_CLIENT_HOSTS
+    )
+
+
 @app.middleware("http")
 async def x402_middleware(request: Request, call_next):
+    if _is_paid_analyze_request(request) and (not AGENT_WALLET or _is_local_mock_payment_bypass(request)):
+        return await call_next(request)
     return await _x402(request, call_next)
 
 

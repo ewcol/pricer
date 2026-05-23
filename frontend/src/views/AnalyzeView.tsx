@@ -88,7 +88,10 @@ export default function AnalyzeView() {
       const analyzeFetch = useMock ? fetch : fetchWithPayment;
       const resp = await analyzeFetch('/analyze-stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(useMock ? { 'X-Pricer-Mock-Wallet': 'true' } : {}),
+        },
         body: JSON.stringify({ image_base64: base64 }),
       });
 

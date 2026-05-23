@@ -1,4 +1,5 @@
 import importlib
+import asyncio
 import os
 import sys
 import types
@@ -160,6 +161,44 @@ class ServerPaymentRoutesTest(unittest.TestCase):
         )
         self.assertNotIn("POST /analyze-item", captured["routes"])
         self.assertIn("POST /analyze-stream", module._routes)
+
+    def test_local_mock_wallet_bypasses_payment_middleware_for_stream(self):
+        module, _captured = load_server_module()
+
+        async def failing_x402(_request, _call_next):
+            raise AssertionError("x402 middleware should be bypassed for local mock wallet requests")
+
+        async def call_next(request):
+            return {"path": request.url.path}
+
+        module._x402 = failing_x402
+        request = types.SimpleNamespace(
+            method="POST",
+            url=types.SimpleNamespace(path="/analyze-stream"),
+            headers={module.MOCK_PAYMENT_BYPASS_HEADER: "true"},
+            client=types.SimpleNamespace(host="127.0.0.1"),
+        )
+
+        self.assertEqual(asyncio.run(module.x402_middleware(request, call_next)), {"path": "/analyze-stream"})
+
+    def test_remote_mock_wallet_header_still_uses_payment_middleware(self):
+        module, _captured = load_server_module()
+
+        async def paid_x402(_request, _call_next):
+            return {"paid": True}
+
+        async def call_next(_request):
+            return {"paid": False}
+
+        module._x402 = paid_x402
+        request = types.SimpleNamespace(
+            method="POST",
+            url=types.SimpleNamespace(path="/analyze-stream"),
+            headers={module.MOCK_PAYMENT_BYPASS_HEADER: "true"},
+            client=types.SimpleNamespace(host="203.0.113.10"),
+        )
+
+        self.assertEqual(asyncio.run(module.x402_middleware(request, call_next)), {"paid": True})
 
 
 if __name__ == "__main__":
