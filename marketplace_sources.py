@@ -17,6 +17,7 @@ SOURCE_SPECS: dict[str, MarketplaceSource] = {
     "poshmark": MarketplaceSource("poshmark", "poshmark_sold_search", "query", 1, "Poshmark"),
     "depop": MarketplaceSource("depop", "depop_sold_search", "query", 1, "Depop"),
     "mercari": MarketplaceSource("mercari", "mercari_us_sold_search", "keyword", 1, "Mercari"),
+    "grailed": MarketplaceSource("grailed", "grailed_sold_search", "query", 3, "Grailed"),
     "therealreal": MarketplaceSource(
         "therealreal", "therealreal_sold_search", "query", 2, "The RealReal"
     ),
@@ -27,7 +28,7 @@ SOURCE_SPECS: dict[str, MarketplaceSource] = {
 
 CATEGORY_TO_SOURCES: dict[str, list[str]] = {
     "basic_apparel": ["ebay", "poshmark", "mercari", "depop"],
-    "streetwear": ["ebay", "depop", "poshmark", "mercari"],
+    "streetwear": ["ebay", "grailed", "depop", "poshmark", "mercari"],
     "luxury": ["ebay", "therealreal", "vestiaire"],
     "sneakers": ["ebay", "stockx"],
 }

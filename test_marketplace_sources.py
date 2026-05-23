@@ -48,7 +48,7 @@ class MarketplaceSourcesTest(unittest.TestCase):
         self.assertEqual(classify_market_segment(context), "streetwear")
         self.assertEqual(
             [source.key for source in select_marketplace_sources(context)],
-            ["ebay", "depop", "poshmark", "mercari"],
+            ["ebay", "grailed", "depop", "poshmark", "mercari"],
         )
 
     def test_build_search_query(self):

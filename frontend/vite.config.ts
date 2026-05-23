@@ -9,6 +9,8 @@ export default defineConfig({
       '/analyze-stream':  { target: 'http://localhost:8000', changeOrigin: true },
       '/analyze-item':    'http://localhost:8000',
       '/tracked-items':   'http://localhost:8000',
+      '/price-history':   'http://localhost:8000',
+      '/portfolio-summary': 'http://localhost:8000',
       '/track-item':      'http://localhost:8000',
       '/schedule-check':  'http://localhost:8000',
       '/cancel-check':    'http://localhost:8000',

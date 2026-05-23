@@ -1,0 +1,41 @@
+.wrap {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.sparkline {
+  display: block;
+  overflow: visible;
+}
+
+.line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dot {
+  fill: currentColor;
+}
+
+.up {
+  color: var(--color-success);
+}
+
+.down {
+  color: var(--color-warning);
+}
+
+.flat {
+  color: var(--color-ink-muted);
+}
+
+.empty {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: var(--text-label);
+  color: var(--color-ink-faint);
+}

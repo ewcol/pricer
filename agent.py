@@ -6,6 +6,7 @@ import statistics
 import asyncio
 import io
 import logging
+import time
 from nimble_python import Nimble
 from PIL import Image
 from google import genai
@@ -27,6 +28,10 @@ load_dotenv()
 _genai_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 _nimble = Nimble(api_key=os.getenv("NIMBLE_API_KEY"))
 logger = logging.getLogger(__name__)
+SOURCE_TIMEOUTS = {
+    "grailed": 20.0,
+}
+DEFAULT_SOURCE_TIMEOUT = 20.0
 
 
 # ---------------------------------------------------------------------------
@@ -148,19 +153,42 @@ async def reconcile_identification(
     return json.loads(text.strip())
 
 
-async def _research_source_prices(source: MarketplaceSource, query: str) -> dict:
+async def _research_source_prices(
+    source: MarketplaceSource,
+    query: str,
+    timeout_seconds: float | None = None,
+) -> dict:
+    started_at = time.monotonic()
+    timeout = timeout_seconds if timeout_seconds is not None else SOURCE_TIMEOUTS.get(source.key, DEFAULT_SOURCE_TIMEOUT)
     try:
-        resp = await asyncio.to_thread(
-            _nimble.agent.run,
-            agent=source.agent_name,
-            params={source.param_name: query},
+        resp = await asyncio.wait_for(
+            asyncio.to_thread(
+                _nimble.agent.run,
+                agent=source.agent_name,
+                params={source.param_name: query},
+            ),
+            timeout=timeout,
         )
-    except Exception as exc:
+    except asyncio.TimeoutError:
+        duration = time.monotonic() - started_at
+        logger.warning("%s search timed out after %.1fs", source.label, timeout)
         return {
             "source": source.key,
             "label": source.label,
             "prices_found": [],
             "source_urls": [],
+            "duration_seconds": round(duration, 3),
+            "note": f"{source.label} search timed out after {timeout:.1f}s.",
+            "timed_out": True,
+        }
+    except Exception as exc:
+        duration = time.monotonic() - started_at
+        return {
+            "source": source.key,
+            "label": source.label,
+            "prices_found": [],
+            "source_urls": [],
+            "duration_seconds": round(duration, 3),
             "note": f"{source.label} search failed: {exc}",
         }
 
@@ -188,11 +216,14 @@ async def _research_source_prices(source: MarketplaceSource, query: str) -> dict
     if not prices:
         note = f"No {source.label} listings with prices found."
 
+    duration = time.monotonic() - started_at
+
     return {
         "source": source.key,
         "label": source.label,
         "prices_found": prices,
         "source_urls": source_urls[:5],
+        "duration_seconds": round(duration, 3),
         "note": note,
     }
 
@@ -211,6 +242,8 @@ async def research_prices(search_keywords: list[str], item_info: dict | None = N
     source_breakdown: list[dict] = []
 
     for source, result in zip(sources, source_results):
+        if result.get("timed_out"):
+            continue
         prices = result.get("prices_found", [])
         if prices:
             raw_prices.extend(prices)
@@ -222,6 +255,7 @@ async def research_prices(search_keywords: list[str], item_info: dict | None = N
                 "label": source.label,
                 "count": len(prices),
                 "priority": source.priority,
+                "duration_seconds": result.get("duration_seconds", 0.0),
                 "note": result.get("note", ""),
             }
         )
@@ -234,7 +268,9 @@ async def research_prices(search_keywords: list[str], item_info: dict | None = N
             "high": None,
             "recommended": None,
             "source_urls": source_urls[:10],
-            "sources_used": [source.key for source in sources],
+            "sources_used": [
+                source.key for source, result in zip(sources, source_results) if not result.get("timed_out")
+            ],
             "source_breakdown": source_breakdown,
             "note": "No marketplace listings with prices found. Recommend manual check.",
         }
@@ -250,7 +286,9 @@ async def research_prices(search_keywords: list[str], item_info: dict | None = N
         "high": max(raw_prices),
         "recommended": recommended,
         "source_urls": source_urls[:10],
-        "sources_used": [source.key for source in sources],
+        "sources_used": [
+            source.key for source, result in zip(sources, source_results) if not result.get("timed_out")
+        ],
         "source_breakdown": source_breakdown,
     }
 

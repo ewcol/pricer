@@ -46,8 +46,11 @@ def analyze_image(image_path):
     reasoning = listing.get("identification_reasoning", "")
     image_url = listing.get("image_url", "")
     search_keywords = ", ".join(listing.get("search_keywords", []))
-    sources_used = ", ".join(listing.get("sources_used", []))
     source_breakdown = listing.get("source_breakdown", [])
+    sources_used = ", ".join(
+        f"{source.get('label', source.get('source', ''))} (w{source.get('priority', 1)})"
+        for source in source_breakdown
+    ) or ", ".join(listing.get("sources_used", []))
     if source_breakdown:
         breakdown_lines = []
         for source in source_breakdown:
@@ -55,7 +58,7 @@ def analyze_image(image_path):
             count = source.get("count", 0)
             priority = source.get("priority", 1)
             note = source.get("note", "")
-            line = f"{label}: {count} hits, weight {priority}"
+            line = f"{label} (w{priority}): {count} hits"
             if note:
                 line += f" - {note}"
             breakdown_lines.append(line)
@@ -93,6 +96,7 @@ def track_item(item_id: str):
         item_id=item_id.strip(),
         title=_current_listing.get("title", ""),
         recommended_price=float(_current_listing.get("recommended_price", 0)),
+        image_url=_current_listing.get("image_url", ""),
         notes=_current_listing.get("price_rationale", ""),
     )
     scheduled = _schedule_item_check(item_id.strip())
@@ -232,54 +236,12 @@ def load_items():
             r["item_id"],
             r["title"],
             r["recommended_price"],
+            r.get("image_url", ""),
             r["current_market_price"] or "—",
             drift_label,
             r["listed_at"],
         ])
     return result
-
-
-# ---------------------------------------------------------------------------
-# Seed data
-# ---------------------------------------------------------------------------
-
-def _seed_if_empty():
-    rows = get_all_items()
-    if len(rows) == 0:
-        seed_items = [
-            {
-                "item_id": "186123456789",
-                "title": "Apple iPhone 12 64GB Black Unlocked - Good Condition",
-                "recommended_price": 219.99,
-                "currency": "USD",
-                "notes": "Median of 8 sold comps on eBay, range $180–$260",
-            },
-            {
-                "item_id": "186987654321",
-                "title": "Nintendo Switch Lite Yellow - Very Good Condition",
-                "recommended_price": 159.99,
-                "currency": "USD",
-                "notes": "Median of 6 sold comps, range $140–$185",
-            },
-            {
-                "item_id": "186555000111",
-                "title": "Sony WH-1000XM4 Wireless Headphones Black - Good",
-                "recommended_price": 189.99,
-                "currency": "USD",
-                "notes": "Median of 5 sold comps, range $160–$220",
-            },
-        ]
-        for item in seed_items:
-            insert_item(
-                item_id=item["item_id"],
-                title=item["title"],
-                recommended_price=item["recommended_price"],
-                currency=item["currency"],
-                notes=item["notes"],
-            )
-
-
-_seed_if_empty()
 
 
 # ---------------------------------------------------------------------------
@@ -339,8 +301,8 @@ with gr.Blocks(title="eBay Seller Agent") as demo:
             monitor_status = gr.Textbox(label="Monitor Status", interactive=False, value="Select a row to monitor", scale=2)
 
         items_table = gr.Dataframe(
-            headers=["Item ID", "Title", "Listed Price", "Market Price", "Drift", "Listed At"],
-            datatype=["str", "str", "number", "str", "str", "str"],
+            headers=["Item ID", "Title", "Listed Price", "Image URL", "Market Price", "Drift", "Listed At"],
+            datatype=["str", "str", "number", "str", "str", "str", "str"],
             interactive=False,
         )
 

@@ -1,4 +1,4 @@
-"""FastAPI entry point — x402-gated /analyze-item + React SPA at /."""
+"""FastAPI entry point — x402-gated /analyze-stream + React SPA at /."""
 import os
 import json
 import logging
@@ -18,7 +18,12 @@ from x402.http.middleware.fastapi import payment_middleware
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 
 from agent import run_agent, run_agent_stream
-from clickhouse_client import insert_item, get_all_items
+from clickhouse_client import (
+    insert_item,
+    get_all_items,
+    get_price_history,
+    get_portfolio_summary,
+)
 from monitor import schedule_item_check, cancel_item_check
 
 AGENT_WALLET = os.getenv("AGENT_WALLET_ADDRESS", "")
@@ -33,9 +38,9 @@ _facilitator = HTTPFacilitatorClient()
 _x402_server = x402ResourceServer(_facilitator)
 _x402_server.register(BASE_NETWORK, ExactEvmServerScheme())
 
-# Gate only POST /analyze-item; Gradio at / is free
+# Gate only POST /analyze-stream; the initial analysis is the paid action
 _routes = {
-    "POST /analyze-item": {
+    "POST /analyze-stream": {
         "accepts": {
             "scheme": "exact",
             "payTo": AGENT_WALLET,
@@ -63,12 +68,13 @@ class TrackRequest(BaseModel):
     item_id: str
     title: str
     recommended_price: float
+    image_url: str = ""
     notes: str = ""
 
 
 @app.post("/analyze-item")
 async def analyze_item(req: AnalyzeRequest) -> dict:
-    """x402-gated: requires USDC payment on Base network."""
+    """Direct analysis endpoint for clients that don't need streaming."""
     return await run_agent(req.image_base64, include_image_url=True)
 
 
@@ -94,12 +100,23 @@ async def tracked_items() -> list[dict]:
     return get_all_items()
 
 
+@app.get("/price-history/{item_id}")
+async def price_history(item_id: str) -> list[dict]:
+    return get_price_history(item_id)
+
+
+@app.get("/portfolio-summary")
+async def portfolio_summary() -> dict:
+    return get_portfolio_summary()
+
+
 @app.post("/track-item")
 async def track_item(req: TrackRequest) -> dict:
     insert_item(
         item_id=req.item_id.strip(),
         title=req.title,
         recommended_price=req.recommended_price,
+        image_url=req.image_url,
         notes=req.notes,
     )
     return {"status": "ok", "item_id": req.item_id.strip()}

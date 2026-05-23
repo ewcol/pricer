@@ -22,7 +22,18 @@ interface ListingResult {
   signals_agree: boolean | null;
   identification_reasoning: string;
   image_url: string;
+  search_keywords: string[];
+  sources_used: string[];
+  source_breakdown: SourceBreakdownEntry[];
   error?: string;
+}
+
+interface SourceBreakdownEntry {
+  source: string;
+  label: string;
+  count: number;
+  priority: number;
+  note: string;
 }
 
 const INITIAL_STEPS: StepState[] = [
@@ -129,6 +140,7 @@ export default function AnalyzeView() {
           item_id: itemId.trim(),
           title: result.title || result.item_name,
           recommended_price: result.recommended_price,
+          image_url: result.image_url || '',
           notes: result.price_rationale || '',
         }),
       });
@@ -162,12 +174,14 @@ export default function AnalyzeView() {
           disabled={!base64 || loading}
         >
           {loading ? (
-            <>
-              <span className={styles.dot} />
-              <span className={styles.dot} />
-              <span className={styles.dot} />
-              Analyzing
-            </>
+            <span className={styles.analyzing} aria-live="polite">
+              <span className={styles.dots} aria-hidden="true">
+                <span className={styles.dot} />
+                <span className={styles.dot} />
+                <span className={styles.dot} />
+              </span>
+              <span className={styles.analyzingLabel}>Analyzing</span>
+            </span>
           ) : 'Analyze Item'}
         </button>
 
@@ -255,6 +269,50 @@ export default function AnalyzeView() {
               <div className={styles.fieldGroup}>
                 <span className={styles.fieldLabel}>Price Range Found</span>
                 <span className={styles.priceRange}>{priceRange}</span>
+              </div>
+            )}
+
+            {(result.sources_used.length > 0 || result.source_breakdown.length > 0) && (
+              <div className={styles.evidenceBlock}>
+                <div className={styles.fieldGroup}>
+                  <span className={styles.fieldLabel}>Marketplaces Used</span>
+                  <div className={styles.sourceChips}>
+                    {result.source_breakdown.length > 0
+                      ? result.source_breakdown.map((source) => (
+                          <span key={source.source} className={styles.sourceChip}>
+                            <span className={styles.sourceName}>{source.label}</span>
+                            <span className={styles.sourceWeight}>w{source.priority}</span>
+                          </span>
+                        ))
+                      : result.sources_used.map((source) => (
+                          <span key={source} className={styles.sourceChip}>
+                            <span className={styles.sourceName}>{source}</span>
+                          </span>
+                        ))}
+                  </div>
+                </div>
+
+                {result.source_breakdown.length > 0 && (
+                  <div className={styles.fieldGroup}>
+                    <span className={styles.fieldLabel}>Marketplace Breakdown</span>
+                    <div className={styles.breakdownList}>
+                      {result.source_breakdown.map((source) => (
+                        <div key={source.source} className={styles.breakdownItem}>
+                          <div className={styles.breakdownTopRow}>
+                            <span className={styles.breakdownLabel}>
+                              {source.label}
+                              <span className={styles.breakdownWeight}>w{source.priority}</span>
+                            </span>
+                            <span className={styles.breakdownCount}>{source.count} hits</span>
+                          </div>
+                          {source.note && (
+                            <div className={styles.breakdownNote}>{source.note}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

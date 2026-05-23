@@ -1,25 +1,66 @@
 import { useState, useEffect, useCallback } from 'react';
 import TrackedTable from '../components/TrackedTable';
 import type { TrackedItem } from '../components/TrackedTable';
+import type { HistoryEntry } from '../components/PriceSparkline';
 import styles from './TrackedView.module.css';
+
+interface PortfolioSummary {
+  total: number;
+  avg_drift: number;
+  flagged: number;
+}
 
 export default function TrackedView() {
   const [items, setItems] = useState<TrackedItem[]>([]);
+  const [summary, setSummary] = useState<PortfolioSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const [historyMap, setHistoryMap] = useState<Record<string, HistoryEntry[]>>({});
 
-  const fetchItems = useCallback(async () => {
+  const refreshDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const resp = await fetch('/tracked-items');
-      if (resp.ok) setItems(await resp.json());
+      const [itemsResp, summaryResp] = await Promise.all([
+        fetch('/tracked-items'),
+        fetch('/portfolio-summary'),
+      ]);
+
+      if (itemsResp.ok) setItems(await itemsResp.json());
+      if (summaryResp.ok) setSummary(await summaryResp.json());
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchItems(); }, [fetchItems]);
+  useEffect(() => { refreshDashboard(); }, [refreshDashboard]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    if (Object.prototype.hasOwnProperty.call(historyMap, selectedId)) return;
+
+    let active = true;
+
+    void (async () => {
+      try {
+        const resp = await fetch(`/price-history/${selectedId}`);
+        if (!resp.ok) return;
+        const history: HistoryEntry[] = await resp.json();
+        if (active) {
+          setHistoryMap((prev) => ({
+            ...prev,
+            [selectedId]: history,
+          }));
+        }
+      } catch {
+        // Leave the cache empty so the user can retry by reselecting the row.
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [historyMap, selectedId]);
 
   const schedule = async () => {
     if (!selectedId) return;
@@ -32,7 +73,7 @@ export default function TrackedView() {
       });
       if (resp.ok) {
         setActionStatus(`Check scheduled for ${selectedId}. Will refresh in ~30s.`);
-        setTimeout(fetchItems, 32000);
+        setTimeout(refreshDashboard, 32000);
       } else {
         setActionStatus('Failed to schedule check.');
       }
@@ -62,7 +103,7 @@ export default function TrackedView() {
         <span className={styles.tableTitle}>Tracked Items</span>
         <button
           className={styles.refreshBtn}
-          onClick={fetchItems}
+          onClick={refreshDashboard}
           disabled={loading}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
@@ -73,9 +114,30 @@ export default function TrackedView() {
         </button>
       </div>
 
+      {summary && summary.total > 0 && (
+        <div className={styles.summary}>
+          <div className={styles.summaryStat}>
+            <div className={styles.summaryValue}>{summary.total}</div>
+            <div className={styles.summaryLabel}>tracked</div>
+          </div>
+          <div className={styles.summaryStat}>
+            <div className={styles.summaryValue}>
+              {summary.avg_drift > 0 ? '+' : ''}
+              {summary.avg_drift.toFixed(1)}%
+            </div>
+            <div className={styles.summaryLabel}>avg drift</div>
+          </div>
+          <div className={styles.summaryStat}>
+            <div className={styles.summaryValue}>{summary.flagged}</div>
+            <div className={styles.summaryLabel}>flagged</div>
+          </div>
+        </div>
+      )}
+
       <TrackedTable
         items={items}
         selectedId={selectedId}
+        historyMap={historyMap}
         onSelect={(id) => {
           setSelectedId(prev => prev === id ? null : id);
           setActionStatus(null);

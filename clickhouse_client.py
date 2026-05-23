@@ -1,5 +1,6 @@
 """ClickHouse data layer — connection, schema init, and CRUD."""
 import os
+import math
 import clickhouse_connect
 from dotenv import load_dotenv
 
@@ -33,6 +34,7 @@ client.command("""
         title                String,
         recommended_price    Float32,
         currency             String DEFAULT 'USD',
+        image_url            String DEFAULT '',
         listed_at            DateTime DEFAULT now(),
         notes                String,
         current_market_price Float32 DEFAULT 0,
@@ -42,6 +44,8 @@ client.command("""
     ENGINE = MergeTree()
     ORDER BY listed_at
 """)
+
+client.command("ALTER TABLE tracked_items ADD COLUMN IF NOT EXISTS image_url String DEFAULT ''")
 
 client.command("""
     CREATE TABLE IF NOT EXISTS price_history (
@@ -62,18 +66,20 @@ def insert_item(
     title: str,
     recommended_price: float,
     currency: str = "USD",
+    image_url: str = "",
     notes: str = "",
 ) -> None:
     client.insert(
         "tracked_items",
-        [[item_id, title, recommended_price, currency, notes]],
-        column_names=["item_id", "title", "recommended_price", "currency", "notes"],
+        [[item_id, title, recommended_price, currency, image_url, notes]],
+        column_names=["item_id", "title", "recommended_price", "currency", "image_url", "notes"],
     )
 
 
 def get_all_items() -> list[dict]:
     result = client.query("""
         SELECT item_id, title, recommended_price, listed_at,
+               image_url,
                current_market_price, price_drift_pct, last_checked_at
         FROM tracked_items ORDER BY listed_at DESC
     """)
@@ -83,12 +89,52 @@ def get_all_items() -> list[dict]:
             "title": row[1],
             "recommended_price": row[2],
             "listed_at": str(row[3]),
-            "current_market_price": row[4],
-            "price_drift_pct": row[5],
-            "last_checked_at": str(row[6]),
+            "image_url": row[4],
+            "current_market_price": row[5],
+            "price_drift_pct": row[6],
+            "last_checked_at": str(row[7]),
         }
         for row in result.result_rows
     ]
+
+
+def get_price_history(item_id: str) -> list[dict]:
+    result = client.query(
+        """
+        SELECT old_price, new_price, drift_pct, detected_at, action_taken
+        FROM price_history WHERE item_id = {id:String} ORDER BY detected_at ASC
+        """,
+        parameters={"id": item_id},
+    )
+    return [
+        {
+            "old_price": row[0],
+            "new_price": row[1],
+            "drift_pct": row[2],
+            "detected_at": str(row[3]),
+            "action_taken": row[4],
+        }
+        for row in result.result_rows
+    ]
+
+
+def get_portfolio_summary() -> dict:
+    result = client.query("""
+        SELECT
+            count()                                          AS total,
+            avgIf(price_drift_pct, current_market_price > 0) AS avg_drift,
+            countIf(abs(price_drift_pct) >= 10)              AS flagged
+        FROM tracked_items
+    """)
+    row = result.result_rows[0] if result.result_rows else (0, 0.0, 0)
+    avg_drift = float(row[1]) if row[1] is not None else 0.0
+    if not math.isfinite(avg_drift):
+        avg_drift = 0.0
+    return {
+        "total": int(row[0]),
+        "avg_drift": avg_drift,
+        "flagged": int(row[2]),
+    }
 
 
 def update_item_market_price(item_id: str, current_price: float, drift_pct: float) -> None:
