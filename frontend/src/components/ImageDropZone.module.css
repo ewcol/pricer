@@ -1,0 +1,100 @@
+.zone {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+  overflow: hidden;
+}
+
+.zone:hover,
+.zoneDragOver {
+  border-color: var(--color-accent);
+  background: var(--color-accent-surface);
+}
+
+.zoneHasImage {
+  border-style: solid;
+  border-color: var(--color-border);
+  cursor: default;
+}
+
+.zoneHasImage:hover {
+  border-color: var(--color-border);
+  background: var(--color-surface-raised);
+}
+
+.preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: var(--space-sm);
+}
+
+.input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  pointer-events: none;
+}
+
+.icon {
+  color: var(--color-ink-faint);
+}
+
+.promptText {
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.promptSub {
+  font-size: 0.8125rem;
+  color: var(--color-ink-faint);
+}
+
+.changeBtn {
+  position: absolute;
+  bottom: var(--space-sm);
+  right: var(--space-sm);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+  z-index: 1;
+}
+
+.changeBtn:hover {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}

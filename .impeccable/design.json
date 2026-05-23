@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-23T00:00:00Z",
+  "title": "Design System: eBay Seller Agent",
+  "extensions": {
+    "colorMeta": {
+      "surface":         { "role": "neutral",   "displayName": "Warm Paper",       "canonical": "oklch(97.5% 0.006 80)",  "tonalRamp": ["oklch(20% 0.006 80)", "oklch(35% 0.006 80)", "oklch(50% 0.006 80)", "oklch(65% 0.006 80)", "oklch(78% 0.006 80)", "oklch(87% 0.006 80)", "oklch(93% 0.006 80)", "oklch(97.5% 0.006 80)"] },
+      "surface-raised":  { "role": "neutral",   "displayName": "Raised Surface",   "canonical": "oklch(100% 0 0)",        "tonalRamp": ["oklch(20% 0 0)", "oklch(35% 0 0)", "oklch(50% 0 0)", "oklch(65% 0 0)", "oklch(78% 0 0)", "oklch(87% 0 0)", "oklch(93% 0 0)", "oklch(100% 0 0)"] },
+      "ink":             { "role": "neutral",   "displayName": "Ink",              "canonical": "oklch(13% 0.005 80)",    "tonalRamp": ["oklch(13% 0.005 80)", "oklch(25% 0.005 80)", "oklch(38% 0.005 80)", "oklch(52% 0.005 80)", "oklch(63% 0.005 80)", "oklch(74% 0.005 80)", "oklch(85% 0.005 80)", "oklch(95% 0.005 80)"] },
+      "ink-muted":       { "role": "neutral",   "displayName": "Muted Ink",        "canonical": "oklch(48% 0.005 80)",    "tonalRamp": ["oklch(13% 0.005 80)", "oklch(25% 0.005 80)", "oklch(35% 0.005 80)", "oklch(48% 0.005 80)", "oklch(62% 0.005 80)", "oklch(74% 0.005 80)", "oklch(85% 0.005 80)", "oklch(95% 0.005 80)"] },
+      "border":          { "role": "neutral",   "displayName": "Border",           "canonical": "oklch(89% 0.006 80)",    "tonalRamp": ["oklch(20% 0.006 80)", "oklch(35% 0.006 80)", "oklch(50% 0.006 80)", "oklch(65% 0.006 80)", "oklch(78% 0.006 80)", "oklch(89% 0.006 80)", "oklch(94% 0.006 80)", "oklch(98% 0.006 80)"] },
+      "accent":          { "role": "primary",   "displayName": "Precision Blue",   "canonical": "oklch(50% 0.22 258)",    "tonalRamp": ["oklch(20% 0.22 258)", "oklch(30% 0.22 258)", "oklch(38% 0.22 258)", "oklch(46% 0.22 258)", "oklch(54% 0.22 258)", "oklch(64% 0.22 258)", "oklch(76% 0.18 258)", "oklch(92% 0.06 258)"] },
+      "accent-surface":  { "role": "primary",   "displayName": "Accent Surface",   "canonical": "oklch(95% 0.04 258)",    "tonalRamp": ["oklch(20% 0.22 258)", "oklch(35% 0.22 258)", "oklch(50% 0.22 258)", "oklch(65% 0.15 258)", "oklch(78% 0.09 258)", "oklch(88% 0.06 258)", "oklch(93% 0.04 258)", "oklch(97% 0.02 258)"] },
+      "success":         { "role": "semantic",  "displayName": "Confirmed Green",  "canonical": "oklch(50% 0.16 155)",    "tonalRamp": ["oklch(20% 0.16 155)", "oklch(30% 0.16 155)", "oklch(40% 0.16 155)", "oklch(50% 0.16 155)", "oklch(62% 0.14 155)", "oklch(74% 0.10 155)", "oklch(86% 0.07 155)", "oklch(95% 0.04 155)"] },
+      "warning":         { "role": "semantic",  "displayName": "Caution Amber",    "canonical": "oklch(52% 0.16 60)",     "tonalRamp": ["oklch(20% 0.16 60)", "oklch(30% 0.16 60)", "oklch(40% 0.16 60)", "oklch(52% 0.16 60)", "oklch(64% 0.14 60)", "oklch(76% 0.10 60)", "oklch(88% 0.07 60)", "oklch(96% 0.04 60)"] }
+    },
+    "typographyMeta": {
+      "display":  { "displayName": "Display",  "purpose": "Recommended price output only. The single most important data point on screen." },
+      "headline": { "displayName": "Headline", "purpose": "Item name output, section headings, tab names." },
+      "title":    { "displayName": "Title",    "purpose": "Card headings, above-field labels for grouped inputs." },
+      "body":     { "displayName": "Body",     "purpose": "Description output, prose content. Max 70ch." },
+      "label":    { "displayName": "Label",    "purpose": "Form labels, metadata tags, confidence badges. Always uppercase." },
+      "mono":     { "displayName": "Mono",     "purpose": "Prices, percentages, item IDs, timestamps. All numeric data." }
+    },
+    "shadows": [
+      { "name": "hover-lift",     "value": "0 2px 8px rgba(17,17,16,0.08), 0 1px 2px rgba(17,17,16,0.04)", "purpose": "Interactive card hover state. Never at rest." },
+      { "name": "focus-ring",     "value": "0 0 0 3px rgba(26,86,219,0.25)",                                "purpose": "Keyboard focus indicator on buttons and inputs." },
+      { "name": "popover",        "value": "0 8px 24px rgba(17,17,16,0.12), 0 2px 4px rgba(17,17,16,0.06)", "purpose": "Floating layers: dropdowns, popovers." }
+    ],
+    "motion": [
+      { "name": "ease-out-quart", "value": "cubic-bezier(0.25, 1, 0.5, 1)",   "purpose": "Default easing for all transitions." },
+      { "name": "duration-fast",  "value": "150ms",                             "purpose": "Hover states, button feedback." },
+      { "name": "duration-base",  "value": "200ms",                             "purpose": "Output panel fade-in, accordion, tab switch." },
+      { "name": "duration-slow",  "value": "350ms",                             "purpose": "Page-level transitions, skeleton → content." }
+    ],
+    "breakpoints": [
+      { "name": "sm",  "value": "640px"  },
+      { "name": "md",  "value": "768px"  },
+      { "name": "lg",  "value": "1024px" },
+      { "name": "xl",  "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main CTA: Analyze Item, Track This Item, Schedule Check.",
+      "html": "<button class=\"ds-btn-primary\">Analyze Item</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; background: #1a56db; color: #fff; padding: 10px 20px; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.875rem; font-weight: 500; letter-spacing: 0.01em; border: none; border-radius: 4px; cursor: pointer; transition: background 150ms cubic-bezier(0.25,1,0.5,1); } .ds-btn-primary:hover { background: #1447c2; } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(26,86,219,0.25); } .ds-btn-primary:active { background: #1040b0; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary actions: Refresh, Cancel.",
+      "html": "<button class=\"ds-btn-secondary\">Refresh</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; gap: 8px; background: #ffffff; color: #111110; padding: 10px 20px; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.875rem; font-weight: 500; border: 1px solid #e4e3df; border-radius: 4px; cursor: pointer; transition: background 150ms cubic-bezier(0.25,1,0.5,1), border-color 150ms; } .ds-btn-secondary:hover { background: #f8f7f5; border-color: #c8c7c3; } .ds-btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(26,86,219,0.25); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "eBay Item ID field, image upload label.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-label\">eBay Item ID</label><input class=\"ds-input\" type=\"text\" placeholder=\"e.g. 123456789012\" /></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; } .ds-label { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.75rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: #6b6b67; } .ds-input { background: #ffffff; color: #111110; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.9375rem; padding: 10px 14px; border: 1px solid #e4e3df; border-radius: 4px; outline: none; transition: border-color 150ms cubic-bezier(0.25,1,0.5,1); } .ds-input::placeholder { color: #a8a8a4; } .ds-input:focus { border-color: #1a56db; } .ds-input:focus-visible { box-shadow: 0 0 0 3px rgba(26,86,219,0.25); }"
+    },
+    {
+      "name": "Output Panel",
+      "kind": "custom",
+      "description": "Labeled panel that populates progressively as the agent produces output.",
+      "html": "<div class=\"ds-output-panel\"><span class=\"ds-output-label\">Recommended Price</span><div class=\"ds-output-value ds-output-price\">$189.99</div></div>",
+      "css": ".ds-output-panel { display: flex; flex-direction: column; gap: 6px; } .ds-output-label { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.75rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: #6b6b67; } .ds-output-value { background: #ffffff; border: 1px solid #e4e3df; border-radius: 6px; padding: 16px; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.9375rem; color: #111110; min-height: 48px; animation: ds-fadein 200ms cubic-bezier(0.25,1,0.5,1) both; } .ds-output-price { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; padding: 20px; } @keyframes ds-fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }"
+    },
+    {
+      "name": "Confidence Badge",
+      "kind": "custom",
+      "description": "Signals whether Gemini + Google Lens agree on item identification.",
+      "html": "<div class=\"ds-confidence ds-confidence--agree\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 14 14\" fill=\"none\"><path d=\"M2 7l3.5 3.5L12 3\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg><span class=\"ds-confidence-pct\">94%</span><span class=\"ds-confidence-label\">Signals agree</span></div>",
+      "css": ".ds-confidence { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 4px; } .ds-confidence--agree { background: #edfaf3; color: #1a7f4b; } .ds-confidence--disagree { background: #fef9ee; color: #b45309; } .ds-confidence-pct { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 0.875rem; font-weight: 600; } .ds-confidence-label { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.75rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }"
+    },
+    {
+      "name": "Tab Bar",
+      "kind": "nav",
+      "description": "Primary navigation between Price & List and Tracked Items.",
+      "html": "<nav class=\"ds-tabs\"><button class=\"ds-tab ds-tab--active\">Price &amp; List</button><button class=\"ds-tab\">Tracked Items</button></nav>",
+      "css": ".ds-tabs { display: flex; border-bottom: 1px solid #e4e3df; gap: 0; } .ds-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 12px 20px; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 0.9375rem; font-weight: 500; color: #6b6b67; cursor: pointer; margin-bottom: -1px; transition: color 150ms, border-color 150ms; } .ds-tab:hover { color: #111110; } .ds-tab--active { color: #111110; font-weight: 600; border-bottom-color: #1a56db; }"
+    },
+    {
+      "name": "Data Table Row",
+      "kind": "custom",
+      "description": "Tracked items table — prices and drift in mono, semantic drift color.",
+      "html": "<table class=\"ds-table\"><thead><tr><th>Item ID</th><th>Title</th><th>Listed</th><th>Market</th><th>Drift</th></tr></thead><tbody><tr class=\"ds-row\"><td class=\"ds-mono\">186123456789</td><td>Apple iPhone 12 64GB Black</td><td class=\"ds-mono\">$219.99</td><td class=\"ds-mono\">$235.00</td><td class=\"ds-mono ds-drift--up\">+6.8%</td></tr></tbody></table>",
+      "css": ".ds-table { width: 100%; border-collapse: collapse; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; } .ds-table th { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: #6b6b67; padding: 12px 16px; border-bottom: 1px solid #e4e3df; text-align: left; } .ds-row td { font-size: 0.9375rem; color: #111110; padding: 14px 16px; border-bottom: 1px solid #e4e3df; } .ds-row:hover td { background: #f8f7f5; } .ds-mono { font-family: 'Geist Mono', 'JetBrains Mono', monospace; } .ds-drift--up { color: #1a7f4b; } .ds-drift--down { color: #b45309; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Appraiser's Desk",
+    "overview": "A clean, light workspace where an expert has laid out evidence and reached a verdict. The UI surfaces agent intelligence with the same authority a Sotheby's appraiser uses to quote a price: no hesitation, no hedging, no decoration. The recommended price is the hero. The confidence score is the backing evidence.\n\nThe surface is warm off-white — not clinical white, not dark. The accent is a precise slate-blue, used only when something is interactive or confirmed. Data labels are small-caps. Prices are large, weight 700, Geist Mono.\n\nThis system rejects: rounded icon-grid cards from 2018 SaaS dashboards, teal+orange palettes, tooltip-heavy dense tables, and anything that signals 'demo.'",
+    "keyCharacteristics": [
+      "Committed light surface: warm off-white base, pure white raised panels",
+      "One accent, precisely used: slate-blue on interactive elements only",
+      "Choreographed output: agent results reveal progressively as each step completes",
+      "Humanist sans throughout: Plus Jakarta Sans",
+      "Mono for data: prices, IDs, percentages in Geist Mono",
+      "Flat by default: no shadows at rest"
+    ],
+    "rules": [
+      { "name": "The One Accent Rule",       "body": "Precision Blue is used for interactive elements and confirmed states only. A screen with 85% neutrals and 15% blue is correct. A screen with 40% blue is broken.", "section": "colors" },
+      { "name": "The No Warm-Cool Split Rule", "body": "The palette is warm-neutral throughout. No cool grays, no blue-tinted surfaces, no competing temperature zones.", "section": "colors" },
+      { "name": "The Price Is Display Rule", "body": "The recommended price always renders at Display scale, weight 700, in Geist Mono. Nothing else on the screen uses Display.", "section": "typography" },
+      { "name": "The Mono-For-Numbers Rule", "body": "Every numeric value (price, confidence percentage, item ID, drift) renders in Geist Mono. The visual distinction signals 'this is a data point, not prose.'", "section": "typography" },
+      { "name": "The Flat-By-Default Rule",  "body": "No element has a shadow at rest. Elevation is earned by state change (hover, focus, open). A card that always has a shadow is using decoration to signal importance.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do render the recommended price at Display scale (clamp 2–3rem, weight 700, Geist Mono).",
+      "Do use square corners (0–4px) for interactive elements.",
+      "Do use Plus Jakarta Sans for prose and Geist Mono for all numeric data.",
+      "Do reveal agent output progressively with fade-in (200ms ease-out).",
+      "Do show confidence score and signal-agreement status prominently, directly below item name.",
+      "Do keep accent blue on ≤15% of any screen surface.",
+      "Do use warm off-white (#f8f7f5) as the page background. Never pure #fff or #000.",
+      "Do label every output field with uppercase Label-scale text in Muted Ink above it."
+    ],
+    "donts": [
+      "Don't use rounded icon-grid cards (icon + heading + paragraph × N). Prohibited.",
+      "Don't use teal, orange, or any warm-cool palette split.",
+      "Don't use gradient text (background-clip: text). Single solid color only.",
+      "Don't apply shadows at rest. Flat by default.",
+      "Don't use border-left as a colored stripe on cards for decoration.",
+      "Don't put the recommended price in body text. Display scale only.",
+      "Don't use tooltips as the primary way to surface information.",
+      "Don't use animated spinners — use skeleton/shimmer on output panels instead.",
+      "Don't make it look like a Gradio app, Hugging Face Space, or any ML demo toy."
+    ]
+  }
+}

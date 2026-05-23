@@ -1,22 +1,24 @@
-"""FastAPI entry point — x402-gated /analyze-item + Gradio UI mounted at /."""
+"""FastAPI entry point — x402-gated /analyze-item + React SPA at /."""
 import os
 import logging
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
 logging.basicConfig(level=logging.DEBUG)
 
-import gradio as gr
 from x402 import x402ResourceServer
 from x402.http import HTTPFacilitatorClient
 from x402.http.middleware.fastapi import payment_middleware
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 
 from agent import run_agent
-from app import demo
+from clickhouse_client import insert_item, get_all_items
+from app import _schedule_item_check, _cancel_item_check
 
 AGENT_WALLET = os.getenv("AGENT_WALLET_ADDRESS", "")
 USDC_BASE = os.getenv("USDC_BASE_ADDRESS", "0x833589fcd6eA067d4b6f71A3d7e95e5F49c6Ef3")
@@ -56,14 +58,55 @@ class AnalyzeRequest(BaseModel):
     image_base64: str
 
 
+class TrackRequest(BaseModel):
+    item_id: str
+    title: str
+    recommended_price: float
+    notes: str = ""
+
+
 @app.post("/analyze-item")
 async def analyze_item(req: AnalyzeRequest) -> dict:
-    """
-    Pay-per-call endpoint: returns a full eBay listing from an item image.
-    Requires x402 USDC payment on Base mainnet ($0.05 per call).
-    Without payment: returns HTTP 402 with payment-required header.
-    """
-    return await run_agent(req.image_base64)
+    """x402-gated: requires USDC payment on Base network."""
+    return await run_agent(req.image_base64, include_image_url=True)
+
+
+@app.post("/analyze-preview")
+async def analyze_preview(req: AnalyzeRequest) -> dict:
+    """Unprotected preview endpoint for demo use."""
+    return await run_agent(req.image_base64, include_image_url=True)
+
+
+@app.get("/tracked-items")
+async def tracked_items() -> list[dict]:
+    return get_all_items()
+
+
+@app.post("/track-item")
+async def track_item(req: TrackRequest) -> dict:
+    insert_item(
+        item_id=req.item_id.strip(),
+        title=req.title,
+        recommended_price=req.recommended_price,
+        notes=req.notes,
+    )
+    return {"status": "ok", "item_id": req.item_id.strip()}
+
+
+class ItemIdRequest(BaseModel):
+    item_id: str
+
+
+@app.post("/schedule-check")
+async def schedule_check(req: ItemIdRequest) -> dict:
+    msg = _schedule_item_check(req.item_id)
+    return {"status": "ok", "message": msg}
+
+
+@app.post("/cancel-check")
+async def cancel_check(req: ItemIdRequest) -> dict:
+    msg = _cancel_item_check(req.item_id)
+    return {"status": "ok", "message": msg}
 
 
 @app.get("/health")
@@ -71,8 +114,16 @@ async def health():
     return {"status": "ok"}
 
 
-# Mount Gradio UI at root — no payment required
-app = gr.mount_gradio_app(app, demo, path="/")
+# Serve React SPA from frontend/dist — fall through to index.html for client routing
+_dist = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+if os.path.isdir(_dist):
+    app.mount("/assets", StaticFiles(directory=os.path.join(_dist, "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        index = os.path.join(_dist, "index.html")
+        return FileResponse(index)
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

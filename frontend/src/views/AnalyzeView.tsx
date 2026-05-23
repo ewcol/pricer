@@ -1,0 +1,261 @@
+import { useState } from 'react';
+import ImageDropZone from '../components/ImageDropZone';
+import OutputPanel from '../components/OutputPanel';
+import SkeletonPanel from '../components/SkeletonPanel';
+import ConfidenceBadge from '../components/ConfidenceBadge';
+import styles from './AnalyzeView.module.css';
+
+interface ListingResult {
+  item_name: string;
+  brand: string;
+  condition_guess: string;
+  title: string;
+  description: string;
+  category_suggestion: string;
+  recommended_price: number;
+  price_rationale: string;
+  low: number | null;
+  high: number | null;
+  confidence: number | null;
+  signals_agree: boolean | null;
+  identification_reasoning: string;
+  image_url: string;
+  error?: string;
+}
+
+export default function AnalyzeView() {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [base64, setBase64] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<ListingResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const [itemId, setItemId] = useState('');
+  const [trackStatus, setTrackStatus] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [tracking, setTracking] = useState(false);
+
+  const handleFile = (_file: File, b64: string) => {
+    setBase64(b64);
+    setPreview(URL.createObjectURL(_file));
+    setResult(null);
+    setError(null);
+    setTrackStatus(null);
+  };
+
+  const analyze = async () => {
+    if (!base64) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const resp = await fetch('/analyze-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_base64: base64 }),
+      });
+      if (!resp.ok) {
+        const msg = resp.status === 402
+          ? 'Payment required. This endpoint requires x402 USDC payment.'
+          : `Request failed (${resp.status})`;
+        setError(msg);
+        return;
+      }
+      const data: ListingResult = await resp.json();
+      if (data.error) { setError(data.error); return; }
+      setResult(data);
+    } catch (e) {
+      setError('Network error. Is the server running?');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const trackItem = async () => {
+    if (!result || !itemId.trim()) return;
+    setTracking(true);
+    try {
+      const resp = await fetch('/track-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item_id: itemId.trim(),
+          title: result.title || result.item_name,
+          recommended_price: result.recommended_price,
+          notes: result.price_rationale || '',
+        }),
+      });
+      if (resp.ok) {
+        setTrackStatus({ msg: `Item ${itemId.trim()} is now tracked.`, ok: true });
+      } else {
+        setTrackStatus({ msg: 'Failed to track item.', ok: false });
+      }
+    } catch {
+      setTrackStatus({ msg: 'Network error.', ok: false });
+    } finally {
+      setTracking(false);
+    }
+  };
+
+  const priceRange = result && result.low != null && result.high != null
+    ? `$${result.low} – $${result.high}`
+    : '';
+
+  return (
+    <div className={styles.layout}>
+      {/* Left column */}
+      <div className={styles.leftCol}>
+        <ImageDropZone onFile={handleFile} preview={preview} disabled={loading} />
+
+        <button
+          className={styles.analyzeBtn}
+          onClick={analyze}
+          disabled={!base64 || loading}
+        >
+          {loading ? (
+            <>
+              <span className={styles.dot} />
+              <span className={styles.dot} />
+              <span className={styles.dot} />
+              Analyzing
+            </>
+          ) : 'Analyze Item'}
+        </button>
+
+        {loading && (
+          <p className={styles.analyzing}>
+            Identifying item and researching prices
+          </p>
+        )}
+
+        {result && (
+          <div className={styles.trackSection}>
+            <span className={styles.sectionLabel}>Track this listing</span>
+            <div className={styles.fieldGroup}>
+              <label htmlFor="item-id" className={styles.fieldLabel}>eBay Item ID</label>
+              <input
+                id="item-id"
+                className={styles.input}
+                type="text"
+                placeholder="e.g. 123456789012"
+                value={itemId}
+                onChange={(e) => setItemId(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && trackItem()}
+              />
+            </div>
+            <button
+              className={styles.trackBtn}
+              onClick={trackItem}
+              disabled={!itemId.trim() || tracking}
+            >
+              {tracking ? 'Tracking...' : 'Track This Item'}
+            </button>
+            {trackStatus && (
+              <p className={`${styles.trackStatus} ${trackStatus.ok ? styles.trackStatusOk : styles.trackStatusError}`}>
+                {trackStatus.msg}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Right column */}
+      <div className={styles.rightCol}>
+        {error && (
+          <div className={styles.errorMsg}>{error}</div>
+        )}
+
+        {!loading && !result && !error && (
+          <>
+            <SkeletonPanel variant="price" />
+            <SkeletonPanel lines={1} />
+            <SkeletonPanel lines={2} />
+            <SkeletonPanel lines={2} />
+            <SkeletonPanel lines={3} />
+          </>
+        )}
+
+        {loading && (
+          <>
+            <SkeletonPanel variant="price" />
+            <SkeletonPanel lines={1} />
+            <SkeletonPanel lines={2} />
+            <SkeletonPanel lines={2} />
+            <SkeletonPanel lines={3} />
+          </>
+        )}
+
+        {result && !error && (
+          <>
+            {/* Item identity */}
+            <div className={styles.itemHeader}>
+              <h2 className={styles.itemName}>
+                {result.brand && result.brand !== 'Unknown' ? `${result.brand} ` : ''}{result.item_name}
+              </h2>
+              {result.condition_guess && (
+                <span className={styles.itemMeta}>{result.condition_guess} condition</span>
+              )}
+              {result.confidence != null && result.signals_agree != null && (
+                <ConfidenceBadge
+                  confidence={result.confidence}
+                  signalsAgree={result.signals_agree}
+                  reasoning={result.identification_reasoning}
+                  animDelay={100}
+                />
+              )}
+            </div>
+
+            {/* Recommended price — the hero */}
+            <OutputPanel
+              label="Recommended Price"
+              value={result.recommended_price ? `$${result.recommended_price}` : ''}
+              variant="price"
+              animDelay={150}
+            />
+
+            {/* Price range */}
+            {priceRange && (
+              <div className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>Price Range Found</span>
+                <span className={styles.priceRange}>{priceRange}</span>
+              </div>
+            )}
+
+            {/* Listing fields */}
+            <OutputPanel
+              label="Suggested eBay Title"
+              value={result.title}
+              variant="copyable"
+              animDelay={200}
+            />
+            <OutputPanel
+              label="Description"
+              value={result.description}
+              variant="textarea"
+              animDelay={250}
+            />
+            <OutputPanel
+              label="Category"
+              value={result.category_suggestion}
+              animDelay={300}
+            />
+
+            {/* Published image URL */}
+            {result.image_url && (
+              <div className={styles.imageUrlRow}>
+                <span className={styles.imageUrlLabel}>Image URL</span>
+                <a
+                  href={result.image_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.imageUrlLink}
+                >
+                  {result.image_url}
+                </a>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

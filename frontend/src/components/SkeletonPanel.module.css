@@ -1,0 +1,52 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.labelSkeleton {
+  height: 11px;
+  width: 80px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--color-border) 25%, #e9e8e4 50%, var(--color-border) 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+.panel {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  overflow: hidden;
+}
+
+.line {
+  height: 14px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--color-border) 25%, #e9e8e4 50%, var(--color-border) 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+  margin-bottom: 10px;
+}
+
+.line:last-child {
+  margin-bottom: 0;
+  width: 60%;
+}
+
+.panelPrice {
+  padding: var(--space-lg);
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+}
+
+.priceLine {
+  height: 48px;
+  width: 160px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--color-border) 25%, #e9e8e4 50%, var(--color-border) 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
