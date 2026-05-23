@@ -43,6 +43,10 @@
   position: relative;
 }
 
+.copyable .panel {
+  padding-right: 72px;
+}
+
 .copyBtn {
   position: absolute;
   top: var(--space-sm);
@@ -78,6 +82,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--space-md);
+  padding-right: 72px;
   font-size: var(--text-body);
   color: var(--color-ink);
   line-height: 1.6;

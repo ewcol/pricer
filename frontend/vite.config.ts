@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/analyze-preview': 'http://localhost:8000',
+      '/analyze-stream':  { target: 'http://localhost:8000', changeOrigin: true },
       '/analyze-item':    'http://localhost:8000',
       '/tracked-items':   'http://localhost:8000',
       '/track-item':      'http://localhost:8000',

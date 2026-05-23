@@ -309,6 +309,76 @@ def _resize_image_b64(image_base64: str, max_px: int = 1024) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
+async def run_agent_stream(image_base64: str):
+    """Yield SSE-style step events, then the final result."""
+    image_base64 = _resize_image_b64(image_base64)
+
+    yield {"step": "vision", "status": "running", "label": "Identifying item via Gemini vision"}
+    yield {"step": "image_search", "status": "running", "label": "Running reverse image search"}
+
+    gemini_result, reverse_result = await asyncio.gather(
+        identify_item(image_base64),
+        reverse_image_search(image_base64),
+    )
+    yield {"step": "vision", "status": "done", "label": "Item identified", "data": {
+        "item_name": gemini_result.get("item_name"),
+        "brand": gemini_result.get("brand"),
+    }}
+    yield {"step": "image_search", "status": "done", "label": "Image search complete", "data": {
+        "hits": len(reverse_result.get("hits", [])),
+        "image_url": reverse_result.get("image_url"),
+    }}
+
+    yield {"step": "reconcile", "status": "running", "label": "Cross-referencing signals"}
+    item_info = await reconcile_identification(gemini_result, reverse_result)
+    yield {"step": "reconcile", "status": "done", "label": "Signals reconciled", "data": {
+        "item_name": item_info.get("item_name"),
+        "confidence": item_info.get("confidence"),
+        "signals_agree": item_info.get("signals_agree"),
+    }}
+
+    yield {"step": "prices", "status": "running", "label": "Researching eBay sold prices"}
+    keywords = item_info.get("search_keywords", [])
+    web_keywords = keywords + ["price used"]
+    ebay_result, web_result = await asyncio.gather(
+        research_prices(keywords),
+        research_prices(web_keywords),
+    )
+    all_prices = ebay_result.get("prices_found", []) + web_result.get("prices_found", [])
+    if all_prices:
+        median = statistics.median(all_prices)
+        recommended = round(median - 0.01) + 0.99
+        price_data = {
+            "prices_found": all_prices,
+            "low": min(all_prices),
+            "high": max(all_prices),
+            "recommended": recommended,
+            "source_urls": (ebay_result.get("source_urls", []) + web_result.get("source_urls", []))[:5],
+        }
+    else:
+        price_data = ebay_result
+    yield {"step": "prices", "status": "done", "label": f"Found {len(all_prices)} comp listings", "data": {
+        "low": price_data.get("low"),
+        "high": price_data.get("high"),
+        "recommended": price_data.get("recommended"),
+    }}
+
+    yield {"step": "listing", "status": "running", "label": "Generating eBay listing"}
+    listing = await generate_listing(item_info, price_data)
+    listing["item_name"] = item_info.get("item_name", "")
+    listing["brand"] = item_info.get("brand", "")
+    listing["condition_guess"] = item_info.get("condition_guess", "")
+    listing["confidence"] = item_info.get("confidence")
+    listing["signals_agree"] = item_info.get("signals_agree")
+    listing["identification_reasoning"] = item_info.get("reasoning", "")
+    listing["image_url"] = reverse_result.get("image_url", "")
+    listing["low"] = price_data.get("low")
+    listing["high"] = price_data.get("high")
+    yield {"step": "listing", "status": "done", "label": "Listing generated"}
+
+    yield {"step": "result", "status": "done", "data": listing}
+
+
 async def run_agent(image_base64: str, include_image_url: bool = False) -> dict:
     image_base64 = _resize_image_b64(image_base64)
 

@@ -3,6 +3,8 @@ import ImageDropZone from '../components/ImageDropZone';
 import OutputPanel from '../components/OutputPanel';
 import SkeletonPanel from '../components/SkeletonPanel';
 import ConfidenceBadge from '../components/ConfidenceBadge';
+import ProgressTracker from '../components/ProgressTracker';
+import type { StepState } from '../components/ProgressTracker';
 import styles from './AnalyzeView.module.css';
 
 interface ListingResult {
@@ -23,12 +25,21 @@ interface ListingResult {
   error?: string;
 }
 
+const INITIAL_STEPS: StepState[] = [
+  { id: 'vision',       label: 'Gemini vision identification',   status: 'idle' },
+  { id: 'image_search', label: 'Reverse image search',           status: 'idle' },
+  { id: 'reconcile',    label: 'Cross-referencing signals',      status: 'idle' },
+  { id: 'prices',       label: 'Researching eBay sold prices',   status: 'idle' },
+  { id: 'listing',      label: 'Generating eBay listing',        status: 'idle' },
+];
+
 export default function AnalyzeView() {
   const [preview, setPreview] = useState<string | null>(null);
   const [base64, setBase64] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ListingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [steps, setSteps] = useState<StepState[]>(INITIAL_STEPS);
 
   const [itemId, setItemId] = useState('');
   const [trackStatus, setTrackStatus] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -40,6 +51,11 @@ export default function AnalyzeView() {
     setResult(null);
     setError(null);
     setTrackStatus(null);
+    setSteps(INITIAL_STEPS);
+  };
+
+  const updateStep = (id: string, patch: Partial<StepState>) => {
+    setSteps(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
   };
 
   const analyze = async () => {
@@ -47,12 +63,15 @@ export default function AnalyzeView() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setSteps(INITIAL_STEPS);
+
     try {
-      const resp = await fetch('/analyze-preview', {
+      const resp = await fetch('/analyze-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image_base64: base64 }),
       });
+
       if (!resp.ok) {
         const msg = resp.status === 402
           ? 'Payment required. This endpoint requires x402 USDC payment.'
@@ -60,10 +79,39 @@ export default function AnalyzeView() {
         setError(msg);
         return;
       }
-      const data: ListingResult = await resp.json();
-      if (data.error) { setError(data.error); return; }
-      setResult(data);
-    } catch (e) {
+
+      const reader = resp.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') break;
+          try {
+            const event = JSON.parse(raw);
+            if (event.step === 'result') {
+              const data: ListingResult = event.data;
+              if (data.error) { setError(data.error); return; }
+              setResult(data);
+            } else if (event.step) {
+              const detail = buildDetail(event);
+              updateStep(event.step, {
+                status: event.status,
+                label: event.label,
+                ...(detail ? { detail } : {}),
+              });
+            }
+          } catch { /* malformed line */ }
+        }
+      }
+    } catch {
       setError('Network error. Is the server running?');
     } finally {
       setLoading(false);
@@ -100,6 +148,8 @@ export default function AnalyzeView() {
     ? `$${result.low} – $${result.high}`
     : '';
 
+  const showProgress = loading || (steps.some(s => s.status !== 'idle') && !result && !error);
+
   return (
     <div className={styles.layout}>
       {/* Left column */}
@@ -120,12 +170,6 @@ export default function AnalyzeView() {
             </>
           ) : 'Analyze Item'}
         </button>
-
-        {loading && (
-          <p className={styles.analyzing}>
-            Identifying item and researching prices
-          </p>
-        )}
 
         {result && (
           <div className={styles.trackSection}>
@@ -164,17 +208,11 @@ export default function AnalyzeView() {
           <div className={styles.errorMsg}>{error}</div>
         )}
 
-        {!loading && !result && !error && (
-          <>
-            <SkeletonPanel variant="price" />
-            <SkeletonPanel lines={1} />
-            <SkeletonPanel lines={2} />
-            <SkeletonPanel lines={2} />
-            <SkeletonPanel lines={3} />
-          </>
+        {showProgress && !result && !error && (
+          <ProgressTracker steps={steps} />
         )}
 
-        {loading && (
+        {!loading && !result && !error && !showProgress && (
           <>
             <SkeletonPanel variant="price" />
             <SkeletonPanel lines={1} />
@@ -258,4 +296,20 @@ export default function AnalyzeView() {
       </div>
     </div>
   );
+}
+
+function buildDetail(event: { step: string; status: string; data?: Record<string, unknown> }): string {
+  if (!event.data || event.status !== 'done') return '';
+  const d = event.data;
+  if (event.step === 'vision') return `${d.brand ?? ''} ${d.item_name ?? ''}`.trim();
+  if (event.step === 'image_search') return `${d.hits ?? 0} visual matches`;
+  if (event.step === 'reconcile') {
+    const pct = d.confidence != null ? `${Math.round(Number(d.confidence) * 100)}% confidence` : '';
+    return pct;
+  }
+  if (event.step === 'prices') {
+    const rec = d.recommended != null ? `$${d.recommended} recommended` : '';
+    return rec;
+  }
+  return '';
 }

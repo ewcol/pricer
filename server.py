@@ -1,10 +1,11 @@
 """FastAPI entry point — x402-gated /analyze-item + React SPA at /."""
 import os
+import json
 import logging
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -16,7 +17,7 @@ from x402.http import HTTPFacilitatorClient
 from x402.http.middleware.fastapi import payment_middleware
 from x402.mechanisms.evm.exact import ExactEvmServerScheme
 
-from agent import run_agent
+from agent import run_agent, run_agent_stream
 from clickhouse_client import insert_item, get_all_items
 from monitor import schedule_item_check, cancel_item_check
 
@@ -75,6 +76,17 @@ async def analyze_item(req: AnalyzeRequest) -> dict:
 async def analyze_preview(req: AnalyzeRequest) -> dict:
     """Unprotected preview endpoint for demo use."""
     return await run_agent(req.image_base64, include_image_url=True)
+
+
+@app.post("/analyze-stream")
+async def analyze_stream(req: AnalyzeRequest):
+    """SSE endpoint: streams step events then the final result."""
+    async def event_generator():
+        async for event in run_agent_stream(req.image_base64):
+            yield f"data: {json.dumps(event)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.get("/tracked-items")
