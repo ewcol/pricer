@@ -72,8 +72,8 @@ export default function TrackedView() {
         body: JSON.stringify({ item_id: selectedId }),
       });
       if (resp.ok) {
-        setActionStatus(`Check scheduled for ${selectedId}. Will refresh in ~30s.`);
-        setTimeout(refreshDashboard, 32000);
+        setActionStatus(`Check scheduled for ${selectedId}. Will refresh in ~5s.`);
+        setTimeout(refreshDashboard, 7000);
       } else {
         setActionStatus('Failed to schedule check.');
       }
@@ -148,7 +148,7 @@ export default function TrackedView() {
         <div className={styles.rowActions}>
           <span className={styles.selectedLabel}>{selectedId}</span>
           <button className={styles.scheduleBtn} onClick={schedule}>
-            Schedule 30s Check
+            Schedule 5s Check
           </button>
           <button className={styles.cancelBtn} onClick={cancel}>
             Cancel

@@ -8,6 +8,7 @@ from agent import research_prices
 
 _pending: dict[str, threading.Timer] = {}
 _lock = threading.Lock()
+CHECK_DELAY_SECONDS = 5.0
 
 
 def _extract_keywords(title: str) -> list[str]:
@@ -53,12 +54,12 @@ def schedule_item_check(item_id: str) -> str:
         existing = _pending.pop(item_id, None)
         if existing:
             existing.cancel()
-        t = threading.Timer(30.0, _run)
+        t = threading.Timer(CHECK_DELAY_SECONDS, _run)
         t.daemon = True
         _pending[item_id] = t
         t.start()
 
-    return f"Check scheduled for {item_id} in 30 seconds."
+    return f"Check scheduled for {item_id} in {CHECK_DELAY_SECONDS:g} seconds."
 
 
 def cancel_item_check(item_id: str) -> str:
