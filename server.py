@@ -18,7 +18,7 @@ from x402.mechanisms.evm.exact import ExactEvmServerScheme
 
 from agent import run_agent
 from clickhouse_client import insert_item, get_all_items
-from app import _schedule_item_check, _cancel_item_check
+from monitor import schedule_item_check, cancel_item_check
 
 AGENT_WALLET = os.getenv("AGENT_WALLET_ADDRESS", "")
 USDC_BASE = os.getenv("USDC_BASE_ADDRESS", "0x833589fcd6eA067d4b6f71A3d7e95e5F49c6Ef3")
@@ -99,13 +99,13 @@ class ItemIdRequest(BaseModel):
 
 @app.post("/schedule-check")
 async def schedule_check(req: ItemIdRequest) -> dict:
-    msg = _schedule_item_check(req.item_id)
+    msg = schedule_item_check(req.item_id)
     return {"status": "ok", "message": msg}
 
 
 @app.post("/cancel-check")
 async def cancel_check(req: ItemIdRequest) -> dict:
-    msg = _cancel_item_check(req.item_id)
+    msg = cancel_item_check(req.item_id)
     return {"status": "ok", "message": msg}
 
 
